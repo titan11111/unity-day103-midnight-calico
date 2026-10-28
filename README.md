@@ -50,7 +50,9 @@ Unity制作 Day103：バイオハザード2風の固定カメラで、深夜の�
 
 `Assets`（`.meta`・日本語フォントとライセンスを含む）・`Packages`・`ProjectSettings` を保存しています。キャッシュ・ログ・個人設定・ZIP・ビルド出力はアップロードしません。`Library` はUnityで開くと再生成されます。
 
-※ このリポジトリはUnityの編集用データです。ブラウザですぐ遊べるWeb版の公開は未実施です。コンパイル・PC試遊・スマホ実機も未確認です。
+プレイ: https://titan11111.github.io/unity-day103-midnight-calico/
+
+このリポジトリの `main` はUnityの編集用データです。ブラウザで遊ぶファイルは `gh-pages` にあります。公開URLの19ファイルは手元のWeb出力とSHA-256が一致しています。PC試遊とスマホ実機は未確認です。
 
 外部の3Dモデル・音声ファイルは使わず、家・家具・猫・主人公・テクスチャ・効果音はすべてスクリプトで生成しています。
 
@@ -58,8 +60,8 @@ Unity制作 Day103：バイオハザード2風の固定カメラで、深夜の�
 1. メニュー **MidnightCalico > ③ WebGLビルド** → `Builds/WebGL` に出力（圧縮なし・`.nojekyll` 付き）
    - `index.html` は自動で iPhone 向けに調整される：全画面・ピンチズーム無効・長押しメニュー無効・「モバイル非対応」バナー削除・縦持ちだと「横向きにしてね」表示
    - Safari の共有 →「ホーム画面に追加」で開くと、アドレスバーなしの全画面で遊べる
-2. `Builds/WebGL` の中身（`index.html` / `Build/` / `TemplateData/` / `.nojekyll`）をリポジトリ直下に置いて push
-3. GitHub の Settings > Pages で `main` / `(root)` を指定
+2. `Builds/WebGL` の中身（`index.html` / `Build/` / `TemplateData/` / `.nojekyll`）を `gh-pages` ブランチの直下に置いて push
+3. GitHub の Settings > Pages は `gh-pages` / `(root)`。プレイURLは https://titan11111.github.io/unity-day103-midnight-calico/
 
 ## iPhone アプリとして実機に入れる（任意）
 1. Unity Hub で「iOS Build Support」を追加
