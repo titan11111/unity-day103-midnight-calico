@@ -48,9 +48,11 @@ namespace MidnightCalico
 
             // 天井側はやや青く、床側は暗く（夜の室内の回り込み光）
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.085f, 0.095f, 0.13f);
-            RenderSettings.ambientEquatorColor = new Color(0.07f, 0.07f, 0.08f);
-            RenderSettings.ambientGroundColor = new Color(0.035f, 0.032f, 0.03f);
+            // 懐中電灯の外でも、壁や家具の輪郭を薄く見分けられる夜間の環境光。
+            // ライト本体の明るさ・照射範囲は変えず、青みのある弱い間接光だけを増やす。
+            RenderSettings.ambientSkyColor = new Color(0.16f, 0.18f, 0.23f);
+            RenderSettings.ambientEquatorColor = new Color(0.13f, 0.14f, 0.17f);
+            RenderSettings.ambientGroundColor = new Color(0.085f, 0.09f, 0.11f);
             if (Application.isMobilePlatform)
             {
                 QualitySettings.antiAliasing = 0;
