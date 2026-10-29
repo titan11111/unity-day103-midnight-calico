@@ -13,6 +13,8 @@ namespace MidnightCalico
         public CamZone current;
         House house;
         Quaternion baseRot;
+        /// <summary>直前のカメラカットが起きた時刻（Time.time）。カット直後の一瞬のスティック離しで移動方向が暴れないようにするための猶予判定に使う。</summary>
+        public float lastCutTime = -99f;
         RenderTexture retroRT;
         public bool retro;
         public System.Action<bool> onRetroChanged;
@@ -68,6 +70,7 @@ namespace MidnightCalico
             if (z != current)
             {
                 current = z;
+                lastCutTime = Time.time;
                 baseRot = Quaternion.LookRotation(z.look - z.pos);
                 cam.transform.position = z.pos;
                 cam.fieldOfView = z.fov;

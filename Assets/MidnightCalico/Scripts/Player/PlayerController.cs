@@ -57,18 +57,17 @@ namespace MidnightCalico
             lg.transform.localRotation = Quaternion.Euler(9f, 0f, 0f);
             flash = lg.AddComponent<Light>();
             flash.type = LightType.Spot;
-            flash.range = 13f;
-            flash.spotAngle = 52f;
-            flash.innerSpotAngle = 20f;
-            flash.intensity = 2.4f;
+            // 2026-10-29: 懐中電灯の性能アップ（届く距離・明るさ・ホットスポットの広さ）
+            flash.range = 17f;
+            flash.spotAngle = 60f;
+            flash.innerSpotAngle = 24f;
+            flash.intensity = 4.5f;
             flash.color = new Color(1f, 0.95f, 0.85f);
             flash.shadows = LightShadows.Soft;
             flash.shadowStrength = 0.9f;
             flash.shadowBias = 0.03f;
             flash.renderMode = LightRenderMode.ForcePixel;
             flash.cookie = Tex.FlashlightCookie();   // 反射板の輪・ホットスポットのある本物っぽい光
-            flash.spotAngle = 58f;
-            flash.intensity = 3.2f;
             AddDust(lg);
 
             // 足もとの影（接地感）
@@ -150,8 +149,14 @@ namespace MidnightCalico
                 else if (!heldBasis)
                 {
                     heldBasis = true;
-                    var cam = FixedCameraSystem.I != null ? FixedCameraSystem.I.cam.transform : null;
-                    if (cam != null) { heldCamFwd = cam.forward; heldCamFwd.y = 0; heldCamFwd.Normalize(); }
+                    // カット直後（0.5秒以内）は、スティックを一瞬離して倒し直しても方向を再取得しない。
+                    // カメラカットに驚いて指を離す→倒し直す、という自然な反応で移動方向が反転して見える問題への対策。
+                    bool justCut = FixedCameraSystem.I != null && (Time.time - FixedCameraSystem.I.lastCutTime) < 0.5f;
+                    if (!justCut)
+                    {
+                        var cam = FixedCameraSystem.I != null ? FixedCameraSystem.I.cam.transform : null;
+                        if (cam != null) { heldCamFwd = cam.forward; heldCamFwd.y = 0; heldCamFwd.Normalize(); }
+                    }
                 }
                 if (mag > 0.12f)
                 {
@@ -188,12 +193,13 @@ namespace MidnightCalico
             if (AudioMan.I != null) AudioMan.I.Play2D(c, running ? 0.55f : (IsSneaking ? 0.12f : 0.3f), Random.Range(0.9f, 1.1f));
         }
 
-        // ───────────────────────── 調べる・捕まえる ─────────────────────────
-        public enum TargetKind { None, Cat, Search }
+        // ───────────────────────── 調べる・捕まえる・電気をつける ─────────────────────────
+        public enum TargetKind { None, Cat, Search, Switch }
 
-        public TargetKind CurrentTarget(out SearchPoint sp)
+        public TargetKind CurrentTarget(out SearchPoint sp, out LightSwitch sw)
         {
             sp = null;
+            sw = null;
             var cat = CatAI.I;
             if (cat != null && cat.state != CatState.Caught)
             {
@@ -214,15 +220,34 @@ namespace MidnightCalico
                 if (dist > 0.3f && Vector3.Angle(transform.forward, d) > 80f) continue;
                 if (dist < best) { best = dist; sp = s; }
             }
-            return sp != null ? TargetKind.Search : TargetKind.None;
+            if (sp != null) return TargetKind.Search;
+            best = 99f;
+            foreach (var s in GameManager.I.house.switches)
+            {
+                Vector3 d = s.pos - transform.position; d.y = 0;
+                float dist = d.magnitude;
+                if (dist > s.radius) continue;
+                if (dist > 0.3f && Vector3.Angle(transform.forward, d) > 80f) continue;
+                if (dist < best) { best = dist; sw = s; }
+            }
+            return sw != null ? TargetKind.Switch : TargetKind.None;
         }
 
         void DoAction()
         {
-            SearchPoint sp;
-            var k = CurrentTarget(out sp);
+            SearchPoint sp; LightSwitch sw;
+            var k = CurrentTarget(out sp, out sw);
             if (k == TargetKind.Cat) StartCoroutine(CatchRoutine());
             else if (k == TargetKind.Search) GameManager.I.DoSearch(sp);
+            else if (k == TargetKind.Switch) ToggleSwitch(sw);
+        }
+
+        void ToggleSwitch(LightSwitch sw)
+        {
+            sw.on = !sw.on;
+            if (sw.light != null) sw.light.intensity = sw.on ? sw.onIntensity : 0f;
+            if (AudioMan.I != null) AudioMan.I.Play2D(Sfx.Cursor, 0.5f, sw.on ? 1.1f : 0.8f);
+            GameManager.I.Toast(sw.on ? (sw.name + "をつけた。") : (sw.name + "を消した。"));
         }
 
         IEnumerator CatchRoutine()

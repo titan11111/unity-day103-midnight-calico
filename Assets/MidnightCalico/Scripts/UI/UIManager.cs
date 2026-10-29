@@ -297,10 +297,13 @@ namespace MidnightCalico
 
             if (gm.state == GState.Play)
             {
-                SearchPoint sp;
-                var k = gm.player.CurrentTarget(out sp);
+                SearchPoint sp; LightSwitch sw;
+                var k = gm.player.CurrentTarget(out sp, out sw);
                 string key = (GameInput.touchUsed || GameInput.padUsed) ? "" : " [E]";
-                prompt.text = k == PlayerController.TargetKind.Cat ? "▶ 捕まえる" + key : (k == PlayerController.TargetKind.Search ? "▶ 調べる" + key : "");
+                prompt.text = k == PlayerController.TargetKind.Cat ? "▶ 捕まえる" + key
+                    : k == PlayerController.TargetKind.Search ? "▶ 調べる" + key
+                    : k == PlayerController.TargetKind.Switch ? "▶ " + (sw.on ? "消す" : "つける") + key
+                    : "";
                 // 体力が少ないと画面の端が赤く脈打つ
                 if (gm.player.hp <= 1 && redT <= 0f) redFlash.color = new Color(0.5f, 0f, 0f, 0.08f + 0.06f * Mathf.Sin(Time.time * 4f));
             }
@@ -445,10 +448,12 @@ namespace MidnightCalico
 
         void UpdateTouchLabels()
         {
-            SearchPoint sp;
-            var k = gm.player.CurrentTarget(out sp);
+            SearchPoint sp; LightSwitch sw;
+            var k = gm.player.CurrentTarget(out sp, out sw);
             bool hot = k != PlayerController.TargetKind.None;
-            aLabel.text = k == PlayerController.TargetKind.Cat ? "捕まえる" : "調べる";
+            aLabel.text = k == PlayerController.TargetKind.Cat ? "捕まえる"
+                : k == PlayerController.TargetKind.Switch ? (sw.on ? "消す" : "つける")
+                : "調べる";
             float pulse = hot ? 0.35f + 0.2f * Mathf.Sin(Time.unscaledTime * 6f) : 0.16f;
             if (!GameInput.Held(GameInput.Action)) { var col = aImg.color; col.a = pulse; aImg.color = col; }
             var eq = gm.inv.equipped;

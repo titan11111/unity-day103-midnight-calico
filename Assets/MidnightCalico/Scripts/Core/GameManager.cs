@@ -47,10 +47,11 @@ namespace MidnightCalico
             QualitySettings.shadowResolution = ShadowResolution.Medium;
 
             // 天井側はやや青く、床側は暗く（夜の室内の回り込み光）
+            // 懐中電灯の外側も真っ暗にはせず、輪郭だけ薄ぼんやり見える明るさまで持ち上げている（2026-10-29 調整）
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.085f, 0.095f, 0.13f);
-            RenderSettings.ambientEquatorColor = new Color(0.07f, 0.07f, 0.08f);
-            RenderSettings.ambientGroundColor = new Color(0.035f, 0.032f, 0.03f);
+            RenderSettings.ambientSkyColor = new Color(0.15f, 0.17f, 0.22f);
+            RenderSettings.ambientEquatorColor = new Color(0.13f, 0.13f, 0.15f);
+            RenderSettings.ambientGroundColor = new Color(0.075f, 0.07f, 0.065f);
             if (Application.isMobilePlatform)
             {
                 QualitySettings.antiAliasing = 0;

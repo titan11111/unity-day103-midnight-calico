@@ -69,6 +69,22 @@ namespace MidnightCalico
         }
     }
 
+    /// <summary>部屋の照明スイッチ・引きひも。近づいてActionで点灯/消灯する（2026-10-29 追加）。</summary>
+    public class LightSwitch
+    {
+        public string name;
+        public Vector3 pos;
+        public float radius = 1.3f;
+        public Light light;
+        public float onIntensity;
+        public bool on;
+        public string room;
+        public LightSwitch(string n, Vector3 p, Light light, float onIntensity)
+        {
+            name = n; pos = p; this.light = light; this.onIntensity = onIntensity;
+        }
+    }
+
     /// <summary>床に置いたエサ・またたび</summary>
     public class LureBowl : MonoBehaviour
     {

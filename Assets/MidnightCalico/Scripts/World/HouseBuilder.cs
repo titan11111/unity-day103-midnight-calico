@@ -16,6 +16,7 @@ namespace MidnightCalico
         public readonly List<CamZone> zones = new List<CamZone>();
         public readonly List<HideSpot> hides = new List<HideSpot>();
         public readonly List<SearchPoint> searches = new List<SearchPoint>();
+        public readonly List<LightSwitch> switches = new List<LightSwitch>();
         public readonly CatGraph graph = new CatGraph();
         public Vector3 playerSpawn = new Vector3(7f, 0f, 2.4f);
         public Vector3 catSpawn = new Vector3(2.2f, 0f, 5.6f);
@@ -548,15 +549,26 @@ namespace MidnightCalico
             OutletX(8f, 13.2f, +1);   // 寝室
             OutletX(0f, 12.3f, +1);   // 和室
 
-            // 天井の照明器具（消灯中）
+            // 天井の照明器具（消灯中）。スイッチ/引きひもで点灯できる（2026-10-29 追加）
             var fixture = Mat.Make("fixture", new Color(0.92f, 0.92f, 0.9f), null, 0.6f);
             Geo.Cyl(root, "シーリングライト", new Vector3(3f, H - 0.04f, 3.5f), 0.3f, 0.07f, fixture, false);
+            var livingLight = AddLight(new Vector3(3f, H - 0.3f, 3.5f), new Color(1f, 0.96f, 0.85f), 0f, 7f);
+            h.switches.Add(new LightSwitch("リビングの照明", new Vector3(5.5f, 0f, 4.2f), livingLight, 2.6f));
+
             Geo.Cyl(root, "シーリングライト", new Vector3(12f, H - 0.04f, 11.8f), 0.3f, 0.07f, fixture, false);
+            var bedLight = AddLight(new Vector3(12f, H - 0.3f, 11.8f), new Color(1f, 0.93f, 0.8f), 0f, 7f);
+            h.switches.Add(new LightSwitch("寝室の照明", new Vector3(8.5f, 0f, 11.0f), bedLight, 2.4f));
+
             Geo.Cyl(root, "浴室灯", new Vector3(13.5f, H - 0.03f, 7.2f), 0.14f, 0.05f, fixture, false);
+            var bathLight = AddLight(new Vector3(13.5f, H - 0.25f, 7.2f), new Color(0.9f, 0.96f, 1f), 0f, 6f);
+            h.switches.Add(new LightSwitch("浴室の照明", new Vector3(11.5f, 0f, 7.2f), bathLight, 2.2f));
+
             var washi = Mat.Make("washiShade", new Color(0.9f, 0.86f, 0.74f), null, 0.2f);
             Geo.BoxMM(root, "和風照明", 2.95f, H - 0.45f, 10.15f, 3.85f, H - 0.25f, 11.05f, washi, false);
             Geo.Cyl(root, "吊り紐", new Vector3(3.4f, H - 0.12f, 10.6f), 0.005f, 0.25f, dark, false);
             Geo.Cyl(root, "引きひも", new Vector3(3.6f, H - 0.75f, 10.8f), 0.003f, 0.6f, dark, false);
+            var washitsuLight = AddLight(new Vector3(3.4f, H - 0.5f, 10.6f), new Color(1f, 0.85f, 0.6f), 0f, 6.5f);
+            h.switches.Add(new LightSwitch("和室の照明（引きひも）", new Vector3(3.6f, 0f, 10.8f), washitsuLight, 2.3f));
 
             // 額縁の絵
             Picture(new Vector3(0f, 1.75f, 3.7f), Vector3.right, 0.8f, 0.55f, 1.3f);
