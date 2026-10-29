@@ -147,7 +147,7 @@ namespace MidnightCalico
             if (EventSystem.current != null) return;
             var es = new GameObject("EventSystem");
             es.AddComponent<EventSystem>();
-#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
+#if ENABLE_INPUT_SYSTEM
             es.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
 #else
             es.AddComponent<StandaloneInputModule>();

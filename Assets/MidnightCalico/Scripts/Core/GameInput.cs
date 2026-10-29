@@ -1,7 +1,10 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
-#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
+// Active Input Handling が「Both」のときは ENABLE_INPUT_SYSTEM と ENABLE_LEGACY_INPUT_MANAGER が両方定義される。
+// 以前は `&& !ENABLE_LEGACY_INPUT_MANAGER` を付けていたため、このプロジェクト（Both設定）では
+// 新Input Systemのパッケージが入っていても常にelse分岐（旧Input Manager）に落ちていた（2026-10-29 修正）。
+#if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
 
@@ -53,7 +56,7 @@ namespace MidnightCalico
             return Time.unscaledTime - t.pressTime < 0.35f;
         }
 
-#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
+#if ENABLE_INPUT_SYSTEM
         static bool K(Key k) { var kb = Keyboard.current; return kb != null && kb[k].isPressed; }
         static bool KD(Key k) { var kb = Keyboard.current; return kb != null && kb[k].wasPressedThisFrame; }
         static Gamepad Pad { get { var g = Gamepad.current; if (g != null && g.wasUpdatedThisFrame) padUsed = true; return g; } }
