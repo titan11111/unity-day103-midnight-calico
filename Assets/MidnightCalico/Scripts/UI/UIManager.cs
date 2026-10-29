@@ -120,6 +120,9 @@ namespace MidnightCalico
             fade = Full("Fade").gameObject.AddComponent<Image>();
             fade.color = new Color(0, 0, 0, 0);
             fade.raycastTarget = false;
+
+            // 変更ID（画面左下に薄く表示。古いビルド・古い公開ページを見ていないかの目印。2026-10-29）
+            Txt(Rect("BuildId", root, Vector2.zero, Vector2.zero, new Vector2(8, 4), new Vector2(240, 22)), BuildInfo.Id, 14, new Color(1f, 1f, 1f, 0.3f), TextAnchor.LowerLeft);
         }
 
         void LoadFonts()
