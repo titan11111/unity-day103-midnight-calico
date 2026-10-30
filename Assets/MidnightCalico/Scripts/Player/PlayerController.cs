@@ -23,6 +23,10 @@ namespace MidnightCalico
         float hurtT;
         Vector3 heldCamFwd = Vector3.forward;
         bool heldBasis;
+        bool cutBasis;
+        Vector2 cutStick;
+        float observedCut = -99f;
+        int inputVersion = -1;
         House house;
 
         public bool IsMoving { get; private set; }
@@ -68,7 +72,6 @@ namespace MidnightCalico
             flash.shadowBias = 0.03f;
             flash.renderMode = LightRenderMode.ForcePixel;
             flash.cookie = Tex.FlashlightCookie();   // 反射板の輪・ホットスポットのある本物っぽい光
-            AddDust(lg);
 
             // 足もとの影（接地感）
             BlobShadow.Attach(transform, 0.75f, 0.55f);
@@ -84,10 +87,17 @@ namespace MidnightCalico
         {
             var gm = GameManager.I;
             if (gm == null) return;
+            if (inputVersion != GameInput.clearVersion)
+            {
+                inputVersion = GameInput.clearVersion;
+                heldBasis = cutBasis = false;
+                touchTarget = default(TargetSelection);
+            }
             float dt = Time.deltaTime;
             hurtT = Mathf.Max(0f, hurtT - dt);
             IsMoving = false;
             IsRunning = false;
+            IsSneaking = false;
 
             if (gm.state == GState.Play && !busy)
             {
@@ -144,18 +154,28 @@ namespace MidnightCalico
             }
             else
             {
-                // カメラ基準：カメラが切り替わっても、指を離すまでは前の向きを保つ（バイオ系の定番対策）
-                if (mag < 0.1f) heldBasis = false;
-                else if (!heldBasis)
+                var cs = FixedCameraSystem.I;
+                if (cs != null && cs.lastCutTime != observedCut)
                 {
-                    heldBasis = true;
-                    // カット直後（0.5秒以内）は、スティックを一瞬離して倒し直しても方向を再取得しない。
-                    // カメラカットに驚いて指を離す→倒し直す、という自然な反応で移動方向が反転して見える問題への対策。
-                    bool justCut = FixedCameraSystem.I != null && (Time.time - FixedCameraSystem.I.lastCutTime) < 0.5f;
-                    if (!justCut)
+                    observedCut = cs.lastCutTime;
+                    cutBasis = heldBasis && mag >= 0.1f;
+                    cutStick = m.normalized;
+                }
+                if (mag < 0.1f) heldBasis = cutBasis = false;
+                else
+                {
+                    // カット中の継続入力は保ち、30度以上の意図的な倒し直しで新画面へ戻す。
+                    bool redirect = cutBasis && Vector2.Angle(cutStick, m) > 30f;
+                    if (!heldBasis || redirect)
                     {
-                        var cam = FixedCameraSystem.I != null ? FixedCameraSystem.I.cam.transform : null;
-                        if (cam != null) { heldCamFwd = cam.forward; heldCamFwd.y = 0; heldCamFwd.Normalize(); }
+                        var cam = cs != null ? cs.cam.transform : null;
+                        if (cam != null)
+                        {
+                            heldCamFwd = Vector3.ProjectOnPlane(cam.forward, Vector3.up).normalized;
+                            if (heldCamFwd.sqrMagnitude < 0.01f) heldCamFwd = transform.forward;
+                        }
+                        heldBasis = true;
+                        cutBasis = false;
                     }
                 }
                 if (mag > 0.12f)
@@ -196,50 +216,100 @@ namespace MidnightCalico
         // ───────────────────────── 調べる・捕まえる・電気をつける ─────────────────────────
         public enum TargetKind { None, Cat, Search, Switch }
 
-        public TargetKind CurrentTarget(out SearchPoint sp, out LightSwitch sw)
+        public struct TargetSelection
         {
-            sp = null;
-            sw = null;
-            var cat = CatAI.I;
-            if (cat != null && cat.state != CatState.Caught)
-            {
-                if (cat.IsCatchTarget(transform.position, transform.forward, 1.35f)) return TargetKind.Cat;
-                if (cat.state == CatState.Hidden && cat.spot != null)
-                {
-                    Vector3 d = cat.spot.approach - transform.position; d.y = 0;
-                    Vector3 d2 = cat.transform.position - transform.position; d2.y = 0;
-                    if (d.magnitude < 1.1f && Vector3.Angle(transform.forward, d2) < 85f) return TargetKind.Cat;
-                }
-            }
-            float best = 99f;
-            foreach (var s in GameManager.I.house.searches)
-            {
-                Vector3 d = s.pos - transform.position; d.y = 0;
-                float dist = d.magnitude;
-                if (dist > s.radius) continue;
-                if (dist > 0.3f && Vector3.Angle(transform.forward, d) > 80f) continue;
-                if (dist < best) { best = dist; sp = s; }
-            }
-            if (sp != null) return TargetKind.Search;
-            best = 99f;
-            foreach (var s in GameManager.I.house.switches)
-            {
-                Vector3 d = s.pos - transform.position; d.y = 0;
-                float dist = d.magnitude;
-                if (dist > s.radius) continue;
-                if (dist > 0.3f && Vector3.Angle(transform.forward, d) > 80f) continue;
-                if (dist < best) { best = dist; sw = s; }
-            }
-            return sw != null ? TargetKind.Switch : TargetKind.None;
+            public TargetKind kind;
+            public SearchPoint search;
+            public LightSwitch lightSwitch;
+            public Vector3 position;
+            public string name;
+        }
+        TargetSelection selected, touchTarget;
+        float touchTargetAt = -99f;
+        int selectionFrame = -1;
+
+        public TargetSelection Selection
+        {
+            get { RefreshSelection(); return selected; }
         }
 
+        bool InReach(Vector3 pos, float radius)
+        {
+            Vector3 d = pos - transform.position; d.y = 0;
+            return d.magnitude <= radius && (d.magnitude <= 0.3f || Vector3.Angle(transform.forward, d) <= 80f);
+        }
+        bool CatInReach()
+        {
+            var cat = CatAI.I;
+            if (cat == null || cat.state == CatState.Caught) return false;
+            if (cat.IsCatchTarget(transform.position, transform.forward, 1.35f)) return true;
+            return cat.state == CatState.Hidden && cat.spot != null &&
+                InReach(cat.spot.approach, 1.1f) && InReach(cat.transform.position, 1.8f);
+        }
+        void RefreshSelection()
+        {
+            if (selectionFrame == Time.frameCount) return;
+            selectionFrame = Time.frameCount;
+            var previous = selected;
+            selected = default(TargetSelection);
+            if (CatInReach())
+            {
+                selected = new TargetSelection { kind = TargetKind.Cat, name = "ミケ", position = CatAI.I.transform.position + Vector3.up * 0.35f };
+                return;
+            }
+            float best = float.MaxValue;
+            string room = house.RoomName(transform.position);
+            foreach (var search in house.searches)
+            {
+                if (!InReach(search.pos, search.radius) || house.RoomName(search.pos) != room) continue;
+                float score = TargetScore(search.pos) - (previous.search == search ? 0.22f : 0f);
+                if (score >= best) continue;
+                best = score;
+                selected = new TargetSelection { kind = TargetKind.Search, search = search, position = search.pos, name = search.name };
+            }
+            foreach (var sw in house.switches)
+            {
+                if (!InReach(sw.pos, sw.radius) || house.RoomName(sw.pos) != room) continue;
+                float score = TargetScore(sw.pos) - (previous.lightSwitch == sw ? 0.22f : 0f);
+                if (score >= best) continue;
+                best = score;
+                selected = new TargetSelection { kind = TargetKind.Switch, lightSwitch = sw, position = sw.pos, name = sw.name };
+            }
+        }
+        float TargetScore(Vector3 pos)
+        {
+            Vector3 d = pos - transform.position; d.y = 0;
+            return d.magnitude + Vector3.Angle(transform.forward, d) / 180f;
+        }
+        public TargetKind CurrentTarget(out SearchPoint sp, out LightSwitch sw)
+        {
+            var target = Selection;
+            sp = target.search; sw = target.lightSwitch;
+            return target.kind;
+        }
+        public void CaptureTouchTarget()
+        {
+            if (GameManager.I == null || GameManager.I.state != GState.Play) return;
+            // 画面に示していた対象を押下開始時に固定する。
+            touchTarget = Selection;
+            touchTargetAt = Time.unscaledTime;
+        }
         void DoAction()
         {
-            SearchPoint sp; LightSwitch sw;
-            var k = CurrentTarget(out sp, out sw);
-            if (k == TargetKind.Cat) StartCoroutine(CatchRoutine());
-            else if (k == TargetKind.Search) GameManager.I.DoSearch(sp);
-            else if (k == TargetKind.Switch) ToggleSwitch(sw);
+            var target = GameInput.lastActionWasTouch && Time.unscaledTime - touchTargetAt < 0.16f ? touchTarget : Selection;
+            touchTargetAt = -99f;
+            if (target.kind == TargetKind.Cat && CatInReach())
+            {
+                GameInput.StopRunning();
+                Vector3 d = CatAI.I.transform.position - transform.position; d.y = 0;
+                if (d.sqrMagnitude > 0.01f)
+                    transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(d), 18f);
+                StartCoroutine(CatchRoutine());
+            }
+            else if (target.kind == TargetKind.Search && target.search != null && InReach(target.search.pos, target.search.radius))
+                GameManager.I.DoSearch(target.search);
+            else if (target.kind == TargetKind.Switch && target.lightSwitch != null && InReach(target.lightSwitch.pos, target.lightSwitch.radius))
+                ToggleSwitch(target.lightSwitch);
         }
 
         void ToggleSwitch(LightSwitch sw)
@@ -307,10 +377,6 @@ namespace MidnightCalico
             {
                 case ItemId.Flashlight:
                     flash.enabled = !flash.enabled;
-                    {
-                        var dust = flash.GetComponentInChildren<ParticleSystem>();
-                        if (dust != null) { if (flash.enabled) dust.Play(); else dust.Stop(); }
-                    }
                     if (AudioMan.I != null) AudioMan.I.Play2D(Sfx.Cursor, 0.6f, 0.6f);
                     gm.Toast(flash.enabled ? "懐中電灯をつけた。" : "懐中電灯を消した。暗闇でもミケの気配はわかる……かもしれない。");
                     break;
@@ -372,50 +438,7 @@ namespace MidnightCalico
 
         public void SetBusy(bool b) { busy = b; }
 
-        /// <summary>懐中電灯の光の中に舞うほこり</summary>
-        static void AddDust(GameObject host)
-        {
-            var g = new GameObject("ほこり");
-            g.transform.SetParent(host.transform, false);
-            g.transform.localPosition = new Vector3(0, 0, 0.3f);
-            var ps = g.AddComponent<ParticleSystem>();
-            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
-            var main = ps.main;
-            main.loop = true;
-            main.startLifetime = new ParticleSystem.MinMaxCurve(4f, 7f);
-            main.startSpeed = new ParticleSystem.MinMaxCurve(0.0f, 0.03f);
-            main.startSize = new ParticleSystem.MinMaxCurve(0.006f, 0.018f);
-            main.startColor = new Color(1f, 0.96f, 0.86f, 0.55f);
-            main.maxParticles = 140;
-            main.simulationSpace = ParticleSystemSimulationSpace.World;
-            main.gravityModifier = 0.002f;
-            var em = ps.emission;
-            em.rateOverTime = 22f;
-            var sh = ps.shape;
-            sh.enabled = true;
-            sh.shapeType = ParticleSystemShapeType.ConeVolume;
-            sh.angle = 22f;
-            sh.radius = 0.05f;
-            sh.length = 4.5f;
-            var noise = ps.noise;
-            noise.enabled = true;
-            noise.strength = 0.04f;
-            noise.frequency = 0.25f;
-            noise.scrollSpeed = 0.1f;
-            var col = ps.colorOverLifetime;
-            col.enabled = true;
-            var grad = new Gradient();
-            grad.SetKeys(
-                new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
-                new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(1f, 0.25f), new GradientAlphaKey(1f, 0.7f), new GradientAlphaKey(0f, 1f) });
-            col.color = new ParticleSystem.MinMaxGradient(grad);
-            var r = g.GetComponent<ParticleSystemRenderer>();
-            r.renderMode = ParticleSystemRenderMode.Billboard;
-            r.sharedMaterial = Mat.Unlit("dust", Tex.SoftDot(Color.white), Color.white);
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            r.receiveShadows = false;
-            ps.Play();
-        }
+
     }
 
     /// <summary>
@@ -445,29 +468,41 @@ namespace MidnightCalico
             var lens = Mat.Emissive("torchLens", Color.white, new Color(1.5f, 1.45f, 1.3f));
 
             hips = Geo.Pivot(transform, "hips", new Vector3(0, 0.92f, 0));
-            Geo.Sph(hips, "pelvis", new Vector3(0, 0, 0), new Vector3(0.32f, 0.2f, 0.21f), pajama);
+            Geo.Sph(hips, "pelvis", Vector3.zero, new Vector3(0.31f, 0.22f, 0.22f), pajama);
             spine = Geo.Pivot(hips, "spine", new Vector3(0, 0.05f, 0));
-            Geo.Sph(spine, "torso", new Vector3(0, 0.27f, 0), new Vector3(0.36f, 0.52f, 0.23f), cardigan);
-            Geo.Box(spine, "pajamaFront", new Vector3(0, 0.27f, 0.105f), new Vector3(0.1f, 0.42f, 0.02f), pajama, false);
-            Geo.Box(spine, "cardiganHem", new Vector3(0, 0.05f, 0), new Vector3(0.36f, 0.08f, 0.24f), cardigan, false);
-            neck = Geo.Pivot(spine, "neck", new Vector3(0, 0.55f, 0));
-            Geo.Cyl(neck, "neckMesh", new Vector3(0, 0.02f, 0), 0.05f, 0.08f, skin, false);
-            Geo.Sph(neck, "head", new Vector3(0, 0.15f, 0.01f), new Vector3(0.19f, 0.23f, 0.21f), skin);
-            Geo.Sph(neck, "hair", new Vector3(0, 0.19f, -0.015f), new Vector3(0.215f, 0.21f, 0.225f), hair);
-            Geo.Sph(neck, "hairBack", new Vector3(0, 0.1f, -0.05f), new Vector3(0.22f, 0.2f, 0.16f), hair);
-            Geo.Box(neck, "bangs", new Vector3(0, 0.235f, 0.085f), new Vector3(0.17f, 0.06f, 0.05f), hair, false);
-            Geo.Sph(neck, "ahoge", new Vector3(0.03f, 0.3f, 0.0f), new Vector3(0.04f, 0.06f, 0.02f), hair); // 寝ぐせ
-            Geo.Sph(neck, "eyeL", new Vector3(-0.045f, 0.16f, 0.1f), new Vector3(0.025f, 0.018f, 0.01f), dark);
-            Geo.Sph(neck, "eyeR", new Vector3(0.045f, 0.16f, 0.1f), new Vector3(0.025f, 0.018f, 0.01f), dark);
-            Geo.Sph(neck, "nose", new Vector3(0, 0.125f, 0.112f), new Vector3(0.02f, 0.025f, 0.02f), skin);
+            Profile(spine, "knittedCardigan", Vector3.zero, cardigan,
+                new Vector4(-0.035f,0.18f,0.125f,0), new Vector4(0.05f,0.175f,0.12f,0),
+                new Vector4(0.19f,0.155f,0.105f,0), new Vector4(0.34f,0.17f,0.11f,0),
+                new Vector4(0.44f,0.163f,0.085f,0), new Vector4(0.49f,0.095f,0.065f,0), new Vector4(0.51f,0.065f,0.055f,0));
+            Profile(spine,"pajamaShirt",Vector3.zero,pajama,
+                new Vector4(-0.03f,0.157f,0.110f,0),new Vector4(0.18f,0.14f,0.095f,0),
+                new Vector4(0.34f,0.16f,0.10f,0),new Vector4(0.44f,0.16f,0.075f,0),new Vector4(0.50f,0.060f,0.048f,0));
+            var trim = Mat.Make("cardiganRib",new Color(0.57f,0.51f,0.42f),null,0.08f);
+            for(int side=-1;side<=1;side+=2) {
+                var edge=Geo.Sph(spine,"cardiganPlacket",new Vector3(side*0.069f,0.24f,0.107f),new Vector3(0.025f,0.46f,0.018f),trim);
+                edge.transform.localRotation=Quaternion.Euler(0,0,side*2f);
+                Geo.Sph(spine,"knittedPocket",new Vector3(side*0.115f,0.09f,0.105f),new Vector3(0.085f,0.105f,0.024f),cardigan);
+            }
+            for(int i=0;i<4;i++) Geo.Sph(spine,"cardiganButton",new Vector3(0.058f,0.08f+i*0.09f,0.139f),new Vector3(0.012f,0.012f,0.005f),dark);
+            neck=Geo.Pivot(spine,"neck",new Vector3(0,0.51f,0));
+            Geo.Cyl(neck,"neckMesh",new Vector3(0,0.025f,0),0.042f,0.105f,skin,false);
+            var faceMat=Mat.Make("natsukiFace",Color.white,Resources.Load<Texture2D>("NatsukiFace"),0.15f);
+            Profile(neck,"face",new Vector3(0,0.035f,0.008f),faceMat,
+                new Vector4(0,0.036f,0.049f,0.016f),new Vector4(0.032f,0.060f,0.070f,0.012f),
+                new Vector4(0.075f,0.080f,0.083f,0.002f),new Vector4(0.13f,0.088f,0.090f,0),
+                new Vector4(0.19f,0.084f,0.086f,-0.004f),new Vector4(0.235f,0.065f,0.068f,-0.012f),new Vector4(0.255f,0.012f,0.016f,-0.012f));
+            for(int side=-1;side<=1;side+=2)
+                Geo.Sph(neck,"ear",new Vector3(side*0.088f,0.162f,-0.003f),new Vector3(0.027f,0.054f,0.030f),skin);
+            HairCap(neck,hair);
 
-            armL = Geo.Pivot(spine, "armL", new Vector3(-0.2f, 0.47f, 0));
-            armR = Geo.Pivot(spine, "armR", new Vector3(0.2f, 0.47f, 0));
+
+            armL = Geo.Pivot(spine, "armL", new Vector3(-0.172f, 0.425f, 0));
+            armR = Geo.Pivot(spine, "armR", new Vector3(0.172f, 0.435f, 0));
             foreL = Limb(armL, cardigan, skin, out Transform handL, false);
-            foreR = Limb(armR, cardigan, skin, out Transform handR, false);
+            foreR = Limb(armR, cardigan, skin, out Transform handR, true);
             // 懐中電灯
-            torchAim = Geo.Pivot(handR, "torchAim", new Vector3(0, -0.02f, 0.03f));
-            AimTorch();
+            torchAim = Geo.Pivot(handR, "torchAim", new Vector3(0, -0.155f, 0.025f));
+            torchAim.localRotation = Quaternion.Euler(90f, 0, 0);
             var torch = Geo.Cyl(torchAim, "torch", new Vector3(0, 0, -0.1f), 0.022f, 0.2f, torchMat, false);
             torch.transform.localRotation = Quaternion.Euler(90, 0, 0);
             var lensG = Geo.Cyl(torchAim, "lens", Vector3.zero, 0.026f, 0.01f, lens, false);
@@ -482,23 +517,41 @@ namespace MidnightCalico
             foreach (var r in GetComponentsInChildren<Renderer>()) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         }
 
-        Transform Limb(Transform shoulder, Material sleeve, Material skin, out Transform hand, bool unused)
+        Transform Limb(Transform shoulder, Material sleeve, Material skin, out Transform hand, bool gripping)
         {
-            Geo.Cyl(shoulder, "upper", new Vector3(0, -0.14f, 0), 0.055f, 0.3f, sleeve, false);
+            Profile(shoulder,"upperSleeve",Vector3.zero,sleeve,new Vector4(-0.30f,0.055f,0.055f,0),new Vector4(-0.19f,0.052f,0.055f,0),new Vector4(-0.05f,0.058f,0.055f,0),new Vector4(0.025f,0.050f,0.048f,0),new Vector4(0.045f,0.036f,0.034f,0),new Vector4(0.060f,0.001f,0.001f,0));
             var elbow = Geo.Pivot(shoulder, "elbow", new Vector3(0, -0.29f, 0));
-            Geo.Cyl(elbow, "fore", new Vector3(0, -0.12f, 0), 0.045f, 0.26f, sleeve, false);
+            Profile(elbow,"foreSleeve",Vector3.zero,sleeve,new Vector4(-0.25f,0.038f,0.041f,0),new Vector4(-0.19f,0.050f,0.049f,0),new Vector4(-0.05f,0.060f,0.055f,0),new Vector4(0.025f,0.045f,0.045f,0));
+            Geo.Cyl(elbow,"ribbedCuff",new Vector3(0,-0.245f,0),0.040f,0.035f,sleeve,false);
             hand = Geo.Pivot(elbow, "hand", new Vector3(0, -0.27f, 0));
-            Geo.Sph(hand, "palm", Vector3.zero, new Vector3(0.07f, 0.09f, 0.05f), skin);
+            Geo.Sph(hand,"palm",Vector3.zero,new Vector3(0.060f,0.079f,0.034f),skin);
+            if (gripping)
+            {
+                // 指を筒の周囲に曲げ、掌と指の間でグリップを挟む。
+                for (int finger = 0; finger < 4; finger++)
+                {
+                    float x = -0.021f + finger * 0.014f;
+                    Geo.Sph(hand, "knuckle", new Vector3(x, -0.025f, 0.045f), new Vector3(0.016f, 0.038f, 0.022f), skin);
+                    Geo.Sph(hand, "curledFinger", new Vector3(x, -0.043f, 0.031f), new Vector3(0.015f, 0.018f, 0.031f), skin);
+                }
+                var thumb = Geo.Sph(hand, "thumb", new Vector3(0.027f, -0.006f, 0.035f), new Vector3(0.023f, 0.041f, 0.026f), skin);
+                thumb.transform.localRotation = Quaternion.Euler(0, 0, -30f);
+            }
+            else
+            {
+                for(int finger=0;finger<4;finger++) Geo.Sph(hand,"finger",new Vector3(-0.021f+finger*0.014f,-0.043f,0.011f),new Vector3(0.013f,0.045f,0.018f),skin);
+                Geo.Sph(hand,"thumb",new Vector3(0.036f,-0.005f,0.014f),new Vector3(0.020f,0.049f,0.023f),skin);
+            }
             return elbow;
         }
 
         Transform Leg(Transform hip, Material pants, Material skin, Material slipper)
         {
-            Geo.Cyl(hip, "thigh", new Vector3(0, -0.21f, 0), 0.075f, 0.44f, pants, false);
+            Profile(hip,"trouserThigh",Vector3.zero,pants,new Vector4(-0.45f,0.066f,0.071f,0),new Vector4(-0.3f,0.078f,0.078f,0),new Vector4(-0.1f,0.09f,0.095f,0),new Vector4(0.045f,0.073f,0.075f,0));
             var knee = Geo.Pivot(hip, "knee", new Vector3(0, -0.43f, 0));
-            Geo.Cyl(knee, "shin", new Vector3(0, -0.2f, 0), 0.06f, 0.42f, pants, false);
+            Profile(knee,"trouserShin",Vector3.zero,pants,new Vector4(-0.42f,0.061f,0.063f,0),new Vector4(-0.34f,0.063f,0.067f,0),new Vector4(-0.17f,0.071f,0.075f,0),new Vector4(0.025f,0.066f,0.072f,0));
             Geo.Sph(knee, "ankle", new Vector3(0, -0.43f, 0), new Vector3(0.07f, 0.06f, 0.07f), skin);
-            Geo.Box(knee, "slipper", new Vector3(0, -0.46f, 0.05f), new Vector3(0.1f, 0.05f, 0.25f), slipper, false);
+            Geo.Sph(knee,"slipper",new Vector3(0,-0.46f,0.05f),new Vector3(0.115f,0.070f,0.255f),slipper);
             return knee;
         }
 
@@ -508,10 +561,51 @@ namespace MidnightCalico
         public void Crouch() { act = Act.Crouch; actionT = 0f; }
         public void Hold() { act = Act.Hold; actionT = 0f; }
 
-        void AimTorch()
+        // Cross-sections create a continuous silhouette rather than stacked primitives.
+        static void Profile(Transform parent,string name,Vector3 offset,Material material,params Vector4[] rings)
         {
-            // 腕・胴体のアニメーションに光軸を回されないよう、最後に体の前方へ合わせる。
-            torchAim.rotation = Quaternion.LookRotation(transform.forward, Vector3.up) * Quaternion.Euler(7f, 0, 0);
+            const int sides=32;
+            int stride=sides+1;
+            float gap=name=="knittedCardigan"?0.43f:0f;
+            var vertices=new Vector3[rings.Length*stride];
+            var uv=new Vector2[vertices.Length];
+            var triangles=new int[(rings.Length-1)*sides*6];
+            for(int row=0;row<rings.Length;row++) for(int col=0;col<=sides;col++) {
+                float angle=gap+col*(Mathf.PI*2-2*gap)/sides;
+                var r=rings[row];
+                vertices[row*stride+col]=new Vector3(Mathf.Sin(angle)*r.y,r.x,Mathf.Cos(angle)*r.z+r.w);
+                uv[row*stride+col]=new Vector2(col/(float)sides,row/(float)(rings.Length-1));
+                if(name=="face") {
+                    float fy=r.x;
+                    float v=fy<0.076f?Mathf.Lerp(0,0.234f,fy/0.076f):fy<0.144f?Mathf.Lerp(0.234f,0.697f,(fy-0.076f)/0.068f):Mathf.Lerp(0.697f,1f,(fy-0.144f)/0.111f);
+                    uv[row*stride+col]=Mathf.Cos(angle)>0?new Vector2(Mathf.Clamp01(0.5f+vertices[row*stride+col].x/0.18f),v):new Vector2(0.03f,0.4f);
+                    float nose=Mathf.Exp(-Mathf.Pow((fy-0.105f)/0.035f,2))*Mathf.Pow(Mathf.Max(0,Mathf.Cos(angle)),24)*0.024f;
+                    vertices[row*stride+col]+=Vector3.forward*nose;
+                }
+                if(row==rings.Length-1 || col==sides) continue;
+                int a=row*stride+col,b=a+1,c=a+stride,d=b+stride,k=(row*sides+col)*6;
+                triangles[k]=a;triangles[k+1]=b;triangles[k+2]=c;triangles[k+3]=b;triangles[k+4]=d;triangles[k+5]=c;
+            }
+            var mesh=new Mesh{name=name};mesh.vertices=vertices;mesh.uv=uv;mesh.triangles=triangles;mesh.RecalculateNormals();mesh.RecalculateBounds();
+            var go=new GameObject(name);go.transform.SetParent(parent,false);go.transform.localPosition=offset;
+            go.AddComponent<MeshFilter>().sharedMesh=mesh;go.AddComponent<MeshRenderer>().sharedMaterial=material;
+        }
+
+        static void HairCap(Transform parent,Material material)
+        {
+            const int sides=40,rows=9;
+            var v=new Vector3[sides*rows];var tris=new int[(rows-1)*sides*6];
+            for(int r=0;r<rows;r++) for(int j=0;j<sides;j++) {
+                float a=j*2*Mathf.PI/sides,t=r/(float)(rows-1);
+                float baseY=Mathf.Lerp(0.055f,0.235f,Mathf.SmoothStep(0f,1f,Mathf.InverseLerp(-0.1f,0.5f,Mathf.Cos(a))))+0.003f*Mathf.Cos(a*9f);
+                float radius=Mathf.Sqrt(Mathf.Max(0,1f-t*t));
+                v[r*sides+j]=new Vector3(Mathf.Sin(a)*0.115f*radius,Mathf.Lerp(baseY,0.325f,t),Mathf.Cos(a)*0.125f*radius-0.010f);
+                if(r==rows-1) continue;
+                int x=r*sides+j,y=r*sides+(j+1)%sides,k=(r*sides+j)*6;
+                tris[k]=x;tris[k+1]=y;tris[k+2]=x+sides;tris[k+3]=y;tris[k+4]=y+sides;tris[k+5]=x+sides;
+            }
+            var mesh=new Mesh{name="bobHair"};mesh.vertices=v;mesh.triangles=tris;mesh.RecalculateNormals();mesh.RecalculateBounds();
+            var go=new GameObject("bobHair");go.transform.SetParent(parent,false);go.AddComponent<MeshFilter>().sharedMesh=mesh;go.AddComponent<MeshRenderer>().sharedMaterial=material;
         }
 
         void LateUpdate()
@@ -536,8 +630,8 @@ namespace MidnightCalico
             float breathe = Mathf.Sin(Time.time * 1.6f) * 1.5f;
 
             // 右手は懐中電灯を前に構える
-            Quaternion armRRot = Quaternion.Euler(-75f + s * 3f, 0f, -6f);
-            Quaternion foreRRot = Quaternion.Euler(-10f, 0, 0);
+            Quaternion armRRot = Quaternion.Euler(-18f + s * 2f, 0f, -6f);
+            Quaternion foreRRot = Quaternion.Euler(-65f, 0, 0);
             Quaternion armLRot = Quaternion.Euler(armLA, 0, 6f);
             Quaternion foreLRot = Quaternion.Euler(-20f, 0, 0);
             Quaternion spineRot = Quaternion.Euler(spinePitch + breathe, 0, 0);
@@ -605,7 +699,6 @@ namespace MidnightCalico
             legR.localRotation = Quaternion.Slerp(legR.localRotation, Quaternion.Euler(-legRA - limp * 5f, 0, 0), l);
             shinL.localRotation = Quaternion.Slerp(shinL.localRotation, Quaternion.Euler(kneeL, 0, 0), l);
             shinR.localRotation = Quaternion.Slerp(shinR.localRotation, Quaternion.Euler(kneeR + limp * 15f, 0, 0), l);
-            AimTorch();
         }
     }
 }

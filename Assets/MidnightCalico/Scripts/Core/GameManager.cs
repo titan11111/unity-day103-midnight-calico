@@ -33,6 +33,7 @@ namespace MidnightCalico
         void Awake()
         {
             I = this;
+            GameInput.ClearTouches();
             // iPhone：横画面固定・スリープ防止・負荷を抑えた画質
             Screen.sleepTimeout = SleepTimeout.NeverSleep;
             Screen.autorotateToPortrait = false;
@@ -130,6 +131,20 @@ namespace MidnightCalico
             if (GameInput.DebugToggle) showDebug = !showDebug;
         }
 
+        void OnApplicationFocus(bool focused)
+        {
+            if (!focused) SuspendControls();
+        }
+        void OnApplicationPause(bool paused)
+        {
+            if (paused) SuspendControls();
+        }
+        void SuspendControls()
+        {
+            GameInput.ClearTouches();
+            if (state == GState.Play && ui != null) OpenPause();
+        }
+
         public void ToggleRetro()
         {
             var cs = FixedCameraSystem.I;
@@ -157,7 +172,7 @@ namespace MidnightCalico
             {
                 // スマホ・ゲームパッドはスティックを倒した方向へ進む操作が標準（ポーズ画面でタンク操作に切替可）
                 player.cameraRelative = true;
-                Toast("スティックを少し倒すと しのび足。B（走る）は足音でミケが逃げる。");
+                Toast("スティックを少し倒すと しのび足。走るボタンで歩行／走行を切替。足音でミケが逃げる。");
             }
             else Toast("↑で前進　↓で後退　←→で向きを変える　Shiftで走る（足音でミケが逃げる）");
         }
@@ -172,6 +187,7 @@ namespace MidnightCalico
 
         public void OpenInventory()
         {
+            GameInput.ClearTouches();
             state = GState.Inventory;
             ui.OpenInventory();
             if (AudioMan.I != null) AudioMan.I.Play2D(Sfx.Cursor, 0.6f, 0.8f);
@@ -187,6 +203,7 @@ namespace MidnightCalico
 
         public void OpenPause()
         {
+            GameInput.ClearTouches();
             state = GState.Pause;
             ui.OpenPause();
         }

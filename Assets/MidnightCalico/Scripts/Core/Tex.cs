@@ -400,6 +400,36 @@ namespace MidnightCalico
             return t;
         }
 
+        static Texture2D nightView;
+        public static Texture2D NightView()
+        {
+            if(nightView!=null) return nightView;
+            const int size=512;
+            nightView=New("mistyNightView",size);nightView.wrapMode=TextureWrapMode.Clamp;
+            var px=new Color[size*size];
+            for(int y=0;y<size;y++) for(int x=0;x<size;x++) {
+                float u=x/(float)size,v=y/(float)size;
+                Color sky=Color.Lerp(new Color(0.16f,0.21f,0.28f),new Color(0.06f,0.095f,0.17f),v);
+                float roof=0.24f+0.11f*Mathf.PerlinNoise(u*9f,3.2f)+0.07f*Mathf.Abs(Mathf.Sin(u*26f));
+                float far=1f-Mathf.SmoothStep(roof-0.008f,roof+0.008f,v);
+                sky=Color.Lerp(sky,new Color(0.105f,0.14f,0.19f),far*0.8f);
+                // Distant dark trees, with soft edges in moonlit haze.
+                float tree=0;
+                for(int i=0;i<5;i++) {
+                    float cx=0.08f+i*0.23f,cy=0.30f+(i%2)*0.08f;
+                    float d=Mathf.Pow((u-cx)/0.09f,2)+Mathf.Pow((v-cy)/0.16f,2);
+                    tree=Mathf.Max(tree,1f-Mathf.SmoothStep(0.7f,1.2f,d));
+                }
+                sky=Color.Lerp(sky,new Color(0.06f,0.105f,0.125f),tree*0.65f);
+                float mist=Mathf.Exp(-Mathf.Pow((v-0.30f)/0.16f,2))*0.25f;
+                sky=Color.Lerp(sky,new Color(0.24f,0.29f,0.36f),mist);
+                float cloud=Mathf.PerlinNoise(u*4f,v*11f)*0.018f;
+                sky+=new Color(cloud,cloud,cloud,0);
+                px[y*size+x]=sky;
+            }
+            nightView.SetPixels(px);nightView.Apply(true);return nightView;
+        }
+
         public static Texture2D Solid(Color c)
         {
             var t = new Texture2D(4, 4, TextureFormat.RGBA32, false);

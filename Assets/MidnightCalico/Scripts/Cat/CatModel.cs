@@ -21,6 +21,7 @@ namespace MidnightCalico
         Renderer[] eyeRenderers;
         float gait, tailT, blinkT, pounceT;
         float eyeGlow;
+        public float EyeEmission { get; private set; }
         Vector3 bodyBase = new Vector3(0f, 0.2f, 0f);
 
         public CatPose pose = CatPose.Stand;
@@ -74,13 +75,13 @@ namespace MidnightCalico
             var eyes = new List<Renderer>();
             for (int s = -1; s <= 1; s += 2)
             {
-                var e = Geo.Sph(head, "eye", new Vector3(s * 0.03f, 0.012f, 0.056f), new Vector3(0.026f, 0.024f, 0.016f), eyeMat);
+                var e = Geo.Sph(head, "eye", new Vector3(s * 0.03f, 0.012f, 0.066f), new Vector3(0.026f, 0.024f, 0.016f), eyeMat);
                 e.GetComponent<Renderer>().sharedMaterial = eyeMat;
                 eyes.Add(e.GetComponent<Renderer>());
-                var pp = Geo.Sph(head, "pupil", new Vector3(s * 0.03f, 0.012f, 0.0635f), new Vector3(0.007f, 0.02f, 0.004f), pupil);
+                var pp = Geo.Sph(head, "pupil", new Vector3(s * 0.03f, 0.012f, 0.0745f), new Vector3(0.007f, 0.02f, 0.004f), pupil);
                 pupils.Add(pp.transform);
                 // 目のハイライト
-                var hl = Geo.Sph(head, "catchlight", new Vector3(s * 0.03f + 0.005f, 0.019f, 0.0648f), Vector3.one * 0.004f, Mat.Emissive("catchlight", Color.white, Color.white * 0.8f));
+                var hl = Geo.Sph(head, "catchlight", new Vector3(s * 0.03f + 0.005f, 0.019f, 0.076f), Vector3.one * 0.004f, Mat.Emissive("catchlight", Color.white, Color.white * 0.8f));
                 hl.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             }
             eyeRenderers = eyes.ToArray();
@@ -303,10 +304,28 @@ namespace MidnightCalico
             }
 
             // ── 目の反射（タペタム） ──
-            eyeGlow = Mathf.MoveTowards(eyeGlow, glowTarget, dt * 4f);
+            // 暗い部屋では弱い黄緑の反射。カメラ側へ顔を向けると見え、点灯した部屋では控えめに。
+            bool roomLit = false;
+            var gm = GameManager.I;
+            if (gm != null && gm.house != null)
+            {
+                string room = gm.house.RoomName(transform.position);
+                foreach (var sw in gm.house.switches) if (sw.on && sw.room == room) { roomLit = true; break; }
+            }
+            float facing = 0f;
+            var cs = FixedCameraSystem.I;
+            if (cs != null && cs.cam != null)
+            {
+                Vector3 toCamera = cs.cam.transform.position - head.position;
+                facing = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(0.05f, 0.7f, Vector3.Dot(head.forward, toCamera.normalized)));
+                facing *= 1f - Mathf.InverseLerp(8f, 18f, toCamera.magnitude);
+            }
+            float darkReflection = (roomLit ? 0.06f : 0.42f) * facing;
+            eyeGlow = Mathf.MoveTowards(eyeGlow, Mathf.Max(darkReflection, glowTarget * facing), dt * 4f);
             if (blinkT < 0f) blinkT = Random.Range(2.5f, 6f);
             bool blink = blinkT < 0.12f;
-            Mat.SetEmission(eyeMat, new Color(0.65f, 0.85f, 0.3f) * (eyeGlow * 2.2f));
+            EyeEmission = blink ? 0f : eyeGlow * 2.2f;
+            Mat.SetEmission(eyeMat, new Color(0.65f, 0.85f, 0.3f) * EyeEmission);
             foreach (var r in eyeRenderers)
             {
                 var s = r.transform.localScale;

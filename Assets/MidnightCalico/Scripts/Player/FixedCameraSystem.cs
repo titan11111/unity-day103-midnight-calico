@@ -58,7 +58,7 @@ namespace MidnightCalico
             }
             Vector3 pp = p.transform.position;
             CamZone z = null;
-            if (current != null && current.Contains(pp)) z = current;
+            if (current != null && ContainsWithMargin(current.rect, pp, 0.12f)) z = current;
             else
             {
                 foreach (var c in house.zones) if (c.Contains(pp)) { z = c; break; }
@@ -79,6 +79,12 @@ namespace MidnightCalico
             }
             Quaternion want = Quaternion.Slerp(baseRot, Quaternion.LookRotation(target - z.pos), z.track);
             cam.transform.rotation = Quaternion.Slerp(cam.transform.rotation, want, 1f - Mathf.Exp(-Time.deltaTime * 4f));
+        }
+
+        static bool ContainsWithMargin(Rect rect, Vector3 p, float margin)
+        {
+            return p.x >= rect.xMin - margin && p.x <= rect.xMax + margin &&
+                p.z >= rect.yMin - margin && p.z <= rect.yMax + margin;
         }
 
         public void ForceCut() { current = null; }

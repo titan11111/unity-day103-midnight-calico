@@ -1,61 +1,49 @@
 using System;
-using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using UnityEditor;
 
 namespace MidnightCalico.EditorTools
 {
-    /// <summary>
-    /// スクリプトの再コンパイルごとに、今のgitコミット（短縮ハッシュ）を BuildInfo.Id へ書き込む。
-    /// 画面隅に表示することで「古いビルド・古い公開ページを見ている」ことに気づけるようにする
-    /// （2026-10-29 タイタンの提案: AI編集→Unity反映検証プロトコルの③に対応）。
-    /// </summary>
+    /// <summary>AssetsとPackagesの内容から変更IDを生成。未コミットの調整も識別し、生成ファイル自身はハッシュから除く。</summary>
     [InitializeOnLoad]
     public static class BuildIdGenerator
     {
         const string OutPath = "Assets/MidnightCalico/Scripts/Core/BuildInfo.cs";
-
         static BuildIdGenerator()
         {
             try
             {
-                string hash = RunGit("rev-parse --short HEAD");
-                bool dirty = !string.IsNullOrEmpty(RunGit("status --porcelain"));
-                string id = string.IsNullOrEmpty(hash) ? "unknown" : hash + (dirty ? "+" : "");
-                string content =
-                    "// 自動生成（Assets/MidnightCalico/Editor/BuildIdGenerator.cs が書き換える）。手で編集しない。\n" +
-                    "namespace MidnightCalico\n{\n" +
-                    "    public static class BuildInfo\n    {\n" +
-                    "        public const string Id = \"day103-" + id + "\";\n" +
-                    "    }\n}\n";
-                string existing = File.Exists(OutPath) ? File.ReadAllText(OutPath) : "";
-                if (existing != content)
+                string id;
+                using (var hash = SHA256.Create())
+                {
+                    var files = new[] { "Assets", "Packages" }.Where(Directory.Exists)
+                        .SelectMany(root => Directory.GetFiles(root, "*", SearchOption.AllDirectories))
+                        .Select(path => path.Replace('\\', '/'))
+                        .Where(path => path != OutPath && !Path.GetFileName(path).StartsWith("."))
+                        .OrderBy(path => path, StringComparer.Ordinal);
+                    foreach (string path in files)
+                    {
+                        byte[] name = Encoding.UTF8.GetBytes(path + "\0");
+                        hash.TransformBlock(name, 0, name.Length, name, 0);
+                        byte[] bytes = File.ReadAllBytes(path);
+                        hash.TransformBlock(bytes, 0, bytes.Length, bytes, 0);
+                    }
+                    hash.TransformFinalBlock(new byte[0], 0, 0);
+                    id = BitConverter.ToString(hash.Hash).Replace("-", "").ToLowerInvariant().Substring(0, 12);
+                }
+                string content = "// 自動生成。Assets・Packagesの内容ID（生成ファイル自身を除く）。\n" +
+                    "namespace MidnightCalico\n{\n    public static class BuildInfo\n    {\n" +
+                    "        public const string Id = \"day103-" + id + "\";\n    }\n}\n";
+                if (!File.Exists(OutPath) || File.ReadAllText(OutPath) != content)
                 {
                     File.WriteAllText(OutPath, content);
                     AssetDatabase.ImportAsset(OutPath);
                 }
             }
-            catch (Exception e)
-            {
-                UnityEngine.Debug.LogWarning("[BuildIdGenerator] gitのコミットIDを取得できませんでした: " + e.Message);
-            }
-        }
-
-        static string RunGit(string args)
-        {
-            var psi = new ProcessStartInfo("git", args)
-            {
-                WorkingDirectory = Directory.GetCurrentDirectory(),
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using (var p = Process.Start(psi))
-            {
-                string output = p.StandardOutput.ReadToEnd().Trim();
-                p.WaitForExit(2000);
-                return output;
-            }
+            catch (Exception e) { UnityEngine.Debug.LogWarning("[BuildIdGenerator] 変更IDを更新できませんでした: " + e.Message); }
         }
     }
 }

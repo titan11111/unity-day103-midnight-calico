@@ -74,6 +74,8 @@ namespace MidnightCalico
                 s.room = h.RoomName(s.approach);
                 s.node = h.graph.Nearest(s.approach, s.room);
             }
+            foreach (var sw in h.switches)
+                sw.room = h.RoomName(sw.light != null ? sw.light.transform.position : sw.pos);
             // 動かない家具・壁をまとめて描画を軽くする（WebGL・スマホ向け）
             try { StaticBatchingUtility.Combine(root.gameObject); }
             catch (System.Exception e) { Debug.LogWarning("[MidnightCalico] static batching skipped: " + e.Message); }
@@ -343,6 +345,11 @@ namespace MidnightCalico
             bool xNormal = Mathf.Abs(normal.x) > 0.5f;
             Vector3 surf = center + normal * (T * 0.5f + 0.005f);
             var glass = frosted ? Mat.Emissive("frosted", new Color(0.5f, 0.55f, 0.6f), new Color(0.10f, 0.14f, 0.22f)) : glassWin;
+            if (!frosted) {
+                glass = Mat.Make("mistyNightWindow", Color.white, Tex.NightView(), 0.15f);
+                glass.SetTexture("_EmissionMap", Tex.NightView());
+                Mat.SetEmission(glass, new Color(0.65f,0.72f,0.85f));
+            }
             QuadFacing("窓ガラス", surf, new Vector2(w, hgt), normal, glass);
             float fd = 0.06f, ft = 0.05f;
             Vector3 fo = normal * (T * 0.5f + fd * 0.5f);

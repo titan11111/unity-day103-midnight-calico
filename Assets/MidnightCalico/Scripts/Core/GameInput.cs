@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -30,6 +31,20 @@ namespace MidnightCalico
         public static bool padUsed;
         /// <summary>画面スティックの値（-1..1）</summary>
         public static Vector2 stick;
+        public static event Action TouchesCleared;
+        public static bool runLatched { get; private set; }
+        public static bool ToggleRunMode { get { return PlayerPrefs.GetInt("mc.runToggle", 1) != 0; } }
+        public static int clearVersion { get; private set; }
+        public static float lastActionAt { get; private set; } = -99f;
+        public static bool lastActionWasTouch { get; private set; }
+        public static void SetRunMode(bool toggle)
+        {
+            ClearTouches();
+            PlayerPrefs.SetInt("mc.runToggle", toggle ? 1 : 0);
+            PlayerPrefs.Save();
+        }
+        public static void StopRunning() { runLatched = false; T(Run).held = false; }
+
 
         static TouchState T(string id)
         {
@@ -42,6 +57,8 @@ namespace MidnightCalico
         {
             var t = T(id);
             t.held = true; t.presses++; t.pressTime = Time.unscaledTime;
+            if (id == Run && ToggleRunMode) runLatched = !runLatched;
+            if (id == Action && PlayerController.I != null) PlayerController.I.CaptureTouchTarget();
             touchUsed = true;
             Haptics.Tap();
         }
@@ -53,7 +70,7 @@ namespace MidnightCalico
             var t = T(id);
             if (t.presses == t.seen) return false;
             t.seen = t.presses;
-            return Time.unscaledTime - t.pressTime < 0.35f;
+            return Time.unscaledTime - t.pressTime < 0.16f;
         }
 
 #if ENABLE_INPUT_SYSTEM
@@ -178,13 +195,18 @@ namespace MidnightCalico
         public static bool AnyKey { get { return Input.anyKeyDown; } }
 #endif
 
-        public static bool Held(string id) { return HeldKey(id) || TouchHeld(id); }
+        public static bool Held(string id) { return HeldKey(id) || (id == Run && ToggleRunMode ? runLatched : TouchHeld(id)); }
 
         /// <summary>押した瞬間。タッチの押下は一度だけ消費される。</summary>
         public static bool Pressed(string id)
         {
             bool k = PressedKey(id);
             bool t = TouchPressed(id);
+            if (id == Action && (k || t))
+            {
+                lastActionWasTouch = t;
+                lastActionAt = Time.unscaledTime;
+            }
             if (id == Confirm) t |= TouchPressed(Action);
             return k || t;
         }
@@ -224,6 +246,14 @@ namespace MidnightCalico
         public static void ClearTouches()
         {
             foreach (var t in touch.Values) { t.held = false; t.seen = t.presses; }
+            stick = Vector2.zero;
+            runLatched = false;
+            lastNav = navEdge = Vector2.zero;
+            navFrame = -1;
+            lastActionAt = -99f;
+            lastActionWasTouch = false;
+            clearVersion++;
+            TouchesCleared?.Invoke();
         }
     }
 
@@ -245,29 +275,36 @@ namespace MidnightCalico
     {
         public string id;
         public UnityEngine.UI.Image img;
+        public RectTransform visual;
+        public UnityEngine.UI.Image halo;
+        public bool interactable = true;
         public Color normal = new Color(1, 1, 1, 0.16f), pressed = new Color(1, 1, 1, 0.42f);
-        public float pressScale = 0.92f;
-        int pointers;
+        public float pressScale = 0.94f;
+        int pointer = int.MinValue;
+        public bool IsPressed { get { return pointer != int.MinValue; } }
 
+        void OnEnable() { GameInput.TouchesCleared += Release; }
         public void OnPointerDown(PointerEventData e)
         {
-            pointers++;
+            if (!interactable || IsPressed) return;
+            pointer = e.pointerId;
             GameInput.TouchDown(id);
             if (img != null) img.color = pressed;
-            transform.localScale = Vector3.one * pressScale;
+            // 当たり判定は縮めず、子の表示だけを動かす。
+            if (visual != null) visual.localScale = Vector3.one * pressScale;
+            if (halo != null) halo.color = new Color(pressed.r, pressed.g, pressed.b, 0.95f);
         }
-        public void OnPointerUp(PointerEventData e) { Release(); }
-        public void OnPointerExit(PointerEventData e) { if (pointers > 0 && id != GameInput.Run) Release(); }
-
+        public void OnPointerUp(PointerEventData e) { if (e.pointerId == pointer) Release(); }
+        public void OnPointerExit(PointerEventData e) { if (e.pointerId == pointer) Release(); }
         void Release()
         {
-            pointers = 0;
-            GameInput.TouchUp(id);
+            if (IsPressed) GameInput.TouchUp(id);
+            pointer = int.MinValue;
             if (img != null) img.color = normal;
-            transform.localScale = Vector3.one;
+            if (visual != null) visual.localScale = Vector3.one;
+            if (halo != null) halo.color = new Color(pressed.r, pressed.g, pressed.b, 0.35f);
         }
-
-        void OnDisable() { if (pointers > 0) Release(); }
+        void OnDisable() { GameInput.TouchesCleared -= Release; Release(); }
     }
 
     /// <summary>
@@ -277,12 +314,15 @@ namespace MidnightCalico
     {
         public RectTransform area, baseRt, knob;
         public UnityEngine.UI.Image baseImg, knobImg;
-        public float radius = 100f;
+        public float radius = 76f;
+        public bool followCenter = true;
         public Vector2 restPos = new Vector2(230f, 210f);
         int pointerId = int.MinValue;
         Vector2 center;
 
+        void OnEnable() { GameInput.TouchesCleared += ResetStick; }
         void Start() { ResetStick(); }
+        public void SetRest(Vector2 pos) { restPos = pos; if (pointerId == int.MinValue) ResetStick(); }
 
         Vector2 Local(PointerEventData e)
         {
@@ -296,7 +336,10 @@ namespace MidnightCalico
         {
             if (pointerId != int.MinValue) return;
             pointerId = e.pointerId;
-            center = Local(e);
+            Vector2 pos = Local(e);
+            float margin = radius + 12f;
+            center = new Vector2(Mathf.Clamp(pos.x, margin, Mathf.Max(margin, area.rect.width - margin)),
+                Mathf.Clamp(pos.y, margin, Mathf.Max(margin, area.rect.height - margin)));
             baseRt.anchoredPosition = center;
             knob.anchoredPosition = center;
             SetAlpha(0.5f, 0.85f);
@@ -309,12 +352,12 @@ namespace MidnightCalico
             if (e.pointerId != pointerId) return;
             Vector2 d = Local(e) - center;
             // 指が大きく離れたら中心もついてくる（ずっと倒し続けやすい）
-            if (d.magnitude > radius * 1.6f) { center += d.normalized * (d.magnitude - radius * 1.6f); baseRt.anchoredPosition = center; d = Local(e) - center; }
+            if (followCenter && d.magnitude > radius * 1.8f) { center += d.normalized * (d.magnitude - radius * 1.8f); baseRt.anchoredPosition = center; d = Local(e) - center; }
             Vector2 c = Vector2.ClampMagnitude(d, radius);
             knob.anchoredPosition = center + c;
             Vector2 v = c / radius;
             float m = v.magnitude;
-            const float dead = 0.14f;
+            const float dead = 0.10f;
             GameInput.stick = m < dead ? Vector2.zero : v.normalized * Mathf.Clamp01((m - dead) / (1f - dead));
         }
 
@@ -324,7 +367,7 @@ namespace MidnightCalico
             ResetStick();
         }
 
-        void OnDisable() { ResetStick(); }
+        void OnDisable() { GameInput.TouchesCleared -= ResetStick; ResetStick(); }
 
         void ResetStick()
         {
@@ -332,7 +375,8 @@ namespace MidnightCalico
             GameInput.stick = Vector2.zero;
             if (baseRt != null) baseRt.anchoredPosition = restPos;
             if (knob != null) knob.anchoredPosition = restPos;
-            SetAlpha(0.18f, 0.35f);
+            float alpha = PlayerPrefs.GetFloat("mc.controlsAlpha", 0.65f);
+            SetAlpha(0.22f * alpha, 0.45f * alpha);
         }
 
         void SetAlpha(float b, float k)

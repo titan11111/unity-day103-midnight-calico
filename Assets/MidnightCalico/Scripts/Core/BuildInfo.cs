@@ -1,8 +1,8 @@
-// 自動生成（Assets/MidnightCalico/Editor/BuildIdGenerator.cs が書き換える）。手で編集しない。
+// 自動生成。Assets・Packagesの内容ID（生成ファイル自身を除く）。
 namespace MidnightCalico
 {
     public static class BuildInfo
     {
-        public const string Id = "day103-unknown";
+        public const string Id = "day103-a18dce1ae58d";
     }
 }

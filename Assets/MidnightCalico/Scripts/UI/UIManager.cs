@@ -151,7 +151,8 @@ namespace MidnightCalico
             var es = new GameObject("EventSystem");
             es.AddComponent<EventSystem>();
 #if ENABLE_INPUT_SYSTEM
-            es.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
+            var module = es.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
+            module.pointerBehavior = UnityEngine.InputSystem.UI.UIPointerBehavior.SingleMouseOrPenButMultiTouchAndTrack;
 #else
             es.AddComponent<StandaloneInputModule>();
 #endif
@@ -303,15 +304,13 @@ namespace MidnightCalico
                 SearchPoint sp; LightSwitch sw;
                 var k = gm.player.CurrentTarget(out sp, out sw);
                 string key = (GameInput.touchUsed || GameInput.padUsed) ? "" : " [E]";
-                prompt.text = k == PlayerController.TargetKind.Cat ? "▶ 捕まえる" + key
-                    : k == PlayerController.TargetKind.Search ? "▶ 調べる" + key
-                    : k == PlayerController.TargetKind.Switch ? "▶ " + (sw.on ? "消す" : "つける") + key
-                    : "";
+                prompt.text = TargetCaption(gm.player.Selection) + (k != PlayerController.TargetKind.None ? key : "");
                 // 体力が少ないと画面の端が赤く脈打つ
                 if (gm.player.hp <= 1 && redT <= 0f) redFlash.color = new Color(0.5f, 0f, 0f, 0.08f + 0.06f * Mathf.Sin(Time.time * 4f));
             }
             else prompt.text = "";
 
+            UpdateTargetMarker();
             if (touchPanel != null)
             {
                 touchPanel.SetActive(gm.state == GState.Play && ShowTouch);
@@ -347,7 +346,17 @@ namespace MidnightCalico
             }
         }
 
-        Text aLabel, xLabel, yLabel;
+        Text aLabel, xLabel, yLabel, runLabel, moveLabel, targetName;
+        TouchButton actionButton, itemButton, runButton, lightButton;
+        RectTransform controlsCluster, targetMarker;
+        VirtualStick moveStick;
+        int controlsWidth, controlsHeight;
+        float appliedSize = -1f, appliedOffset = -1f;
+        Text sizeSetting, posSetting, alphaSetting, runSetting, stickSetting;
+        public void SetTouchVisible(bool visible) { touchOverride = true; touchForced = visible; }
+        public float ControlSize { get { return PlayerPrefs.GetFloat("mc.controlsSize", 1f); } }
+        public float ControlOffset { get { return PlayerPrefs.GetFloat("mc.controlsOffset", 0f); } }
+        public float ControlAlpha { get { return PlayerPrefs.GetFloat("mc.controlsAlpha", 0.65f); } }
         Image aImg;
         static Sprite discSprite, ringSprite;
 
@@ -377,32 +386,30 @@ namespace MidnightCalico
             var rt = Rect("pad_" + id, parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
             rt.sizeDelta = new Vector2(size, size);
             rt.anchoredPosition = pos;
-            var img = rt.gameObject.AddComponent<Image>();
+            // 操作判定は固定。押したときに動く表示は子へ分離する。
+            var hit = Img(rt, Color.clear, true);
+            var visual = Full("visual", rt);
+            visual.offsetMin = new Vector2(7, 7); visual.offsetMax = new Vector2(-7, -7);
+            var img = Img(visual, new Color(tint.r, tint.g, tint.b, 0.28f));
             img.sprite = discSprite;
-            var normal = new Color(tint.r, tint.g, tint.b, 0.20f);
-            img.color = normal;
-            img.raycastTarget = true;
-            var ring = Img(Full("ring", rt), new Color(tint.r, tint.g, tint.b, 0.55f));
+            var ring = Img(Full("ring", visual), new Color(tint.r, tint.g, tint.b, 0.65f));
             ring.sprite = ringSprite;
+            var outer = Rect("pressHalo", rt, Vector2.zero, Vector2.one, new Vector2(-5,-5), new Vector2(5,5));
+            var halo = Img(outer, new Color(tint.r, tint.g, tint.b, 0.35f));
+            halo.sprite = ringSprite;
             var tb = rt.gameObject.AddComponent<TouchButton>();
-            tb.id = id;
-            tb.img = img;
-            tb.normal = normal;
-            tb.pressed = new Color(tint.r, tint.g, tint.b, 0.55f);
-            labelText = Txt(Full("label", rt), label, fontSize, new Color(1, 1, 1, 0.92f), TextAnchor.MiddleCenter);
-            labelText.horizontalOverflow = HorizontalWrapMode.Overflow;
-            if (!string.IsNullOrEmpty(corner))
-            {
-                var c = Txt(Rect("corner", rt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(-30, -34), new Vector2(30, -4)), corner, 18, new Color(tint.r, tint.g, tint.b, 0.9f), TextAnchor.MiddleCenter, titleFont);
-                c.horizontalOverflow = HorizontalWrapMode.Overflow;
-            }
+            tb.id = id; tb.img = img; tb.visual = visual; tb.halo = halo;
+            tb.normal = img.color;
+            tb.pressed = new Color(tint.r, tint.g, tint.b, 0.7f);
+            labelText = Txt(Full("label", visual), label, fontSize, new Color(1, 1, 1, 0.96f), TextAnchor.MiddleCenter);
+            labelText.horizontalOverflow = HorizontalWrapMode.Wrap;
             return tb;
         }
 
         /// <summary>
         /// iPhone 横持ち用コントローラー。
         /// 左手：画面の左側どこでも触った所が中心になるスティック（少し倒す＝しのび足）
-        /// 右手：A 調べる/捕まえる（大）・B 走る（押しっぱなし）・X アイテム使用・Y ライト
+        /// 右手：主操作（大）・走行切替・アイテム使用・ライト
         /// 右上：ITEM・ポーズ
         /// </summary>
         void BuildTouch()
@@ -412,56 +419,129 @@ namespace MidnightCalico
             touchPanel = p.gameObject;
 
             // ── 左手スティック ──
-            var area = Rect("StickArea", p, Vector2.zero, new Vector2(0.45f, 0.8f), Vector2.zero, Vector2.zero);
+            var area = Rect("StickArea", p, Vector2.zero, new Vector2(0.42f, 0.54f), Vector2.zero, Vector2.zero);
             area.pivot = Vector2.zero;
             Img(area, new Color(0, 0, 0, 0), true);
             var baseRt = Rect("StickBase", area, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero);
             baseRt.pivot = new Vector2(0.5f, 0.5f);
-            baseRt.sizeDelta = new Vector2(240, 240);
+            baseRt.sizeDelta = new Vector2(190, 190);
             var bImg = baseRt.gameObject.AddComponent<Image>();
             bImg.sprite = ringSprite; bImg.color = new Color(1, 1, 1, 0.18f); bImg.raycastTarget = false;
             var knob = Rect("StickKnob", area, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero);
             knob.pivot = new Vector2(0.5f, 0.5f);
-            knob.sizeDelta = new Vector2(112, 112);
+            knob.sizeDelta = new Vector2(88, 88);
             var kImg = knob.gameObject.AddComponent<Image>();
             kImg.sprite = discSprite; kImg.color = new Color(1, 1, 1, 0.35f); kImg.raycastTarget = false;
             var st = area.gameObject.AddComponent<VirtualStick>();
             st.area = area; st.baseRt = baseRt; st.knob = knob; st.baseImg = bImg; st.knobImg = kImg;
-            st.radius = 100f;
-            st.restPos = new Vector2(200f, 190f);
-            var hint = Txt(Rect("hint", area, Vector2.zero, Vector2.zero, new Vector2(80, 26), new Vector2(330, 56)), "少し倒す＝しのび足", 18, new Color(1, 1, 1, 0.35f), TextAnchor.MiddleCenter);
-            hint.horizontalOverflow = HorizontalWrapMode.Overflow;
+            moveStick = st;
+            st.radius = 76f;
+            st.restPos = new Vector2(155f, 160f);
+            moveLabel = Txt(Rect("movementState", p, Vector2.zero, Vector2.zero, new Vector2(55, 22), new Vector2(355, 60)), "歩行 · 少し倒すとしのび足", 19, Gold, TextAnchor.MiddleCenter);
 
-            // ── 右手ボタン（ゲームパッドと同じひし形配置） ──
-            var cluster = Rect("FaceButtons", p, new Vector2(1, 0), new Vector2(1, 0), Vector2.zero, Vector2.zero);
-            Vector2 c = new Vector2(-230f, 228f);
+            // 右親指の定位置に主操作。その周囲へ道具・走行・ライトを配置。
+            controlsCluster = Rect("FaceButtons", p, new Vector2(1, 0), new Vector2(1, 0), Vector2.zero, Vector2.zero);
+            var cluster = controlsCluster;
+            actionButton = RoundBtn(cluster, GameInput.Action, "調べる", "", new Vector2(-148, 145), 176, new Color(0.95f, 0.82f, 0.45f), 28, out aLabel);
+            aImg = actionButton.img;
+            itemButton = RoundBtn(cluster, GameInput.Item, "道具なし", "", new Vector2(-327, 205), 122, new Color(0.5f, 0.75f, 1f), 23, out xLabel);
+            runButton = RoundBtn(cluster, GameInput.Run, "走る", "", new Vector2(-142, 330), 126, new Color(0.95f, 0.67f, 0.4f), 23, out runLabel);
+            lightButton = RoundBtn(cluster, GameInput.Torch, "ライト", "", new Vector2(-310, 365), 110, new Color(0.7f, 0.86f, 0.72f), 21, out yLabel);
             Text tmp;
-            var a = RoundBtn(cluster, GameInput.Action, "調べる", "A", c + new Vector2(0, -122), 158, new Color(0.95f, 0.82f, 0.45f), 26, out aLabel);
-            aImg = a.img;
-            RoundBtn(cluster, GameInput.Run, "走る", "B", c + new Vector2(124, 0), 122, new Color(0.95f, 0.45f, 0.4f), 24, out tmp);
-            RoundBtn(cluster, GameInput.Item, "使う", "X", c + new Vector2(-124, 0), 122, new Color(0.5f, 0.75f, 1f), 20, out xLabel);
-            RoundBtn(cluster, GameInput.Torch, "ライト", "Y", c + new Vector2(0, 118), 108, new Color(0.6f, 0.95f, 0.55f), 20, out yLabel);
 
             // ── 右上 ──
             var top = Rect("TopButtons", p, new Vector2(1, 1), new Vector2(1, 1), Vector2.zero, Vector2.zero);
-            RoundBtn(top, GameInput.Menu, "ITEM", "", new Vector2(-74, -112), 92, new Color(0.9f, 0.85f, 0.7f), 20, out tmp);
-            RoundBtn(top, GameInput.Cancel, "Ⅱ", "", new Vector2(-176, -112), 78, new Color(0.8f, 0.8f, 0.8f), 24, out tmp);
+            RoundBtn(top, GameInput.Menu, "ITEM", "", new Vector2(-76, -78), 98, new Color(0.9f, 0.85f, 0.7f), 20, out tmp);
+            RoundBtn(top, GameInput.Cancel, "Ⅱ", "", new Vector2(-190, -78), 98, new Color(0.8f, 0.8f, 0.8f), 24, out tmp);
+            targetMarker = Rect("TargetMarker", safe, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero);
+            targetMarker.pivot = new Vector2(0.5f, 0.5f);
+            targetMarker.sizeDelta = new Vector2(38, 38);
+            var markerImage = Img(Full("ring", targetMarker), Gold);
+            markerImage.sprite = ringSprite;
+            targetName = Txt(Rect("targetName", targetMarker, new Vector2(0.5f,1), new Vector2(0.5f,1), new Vector2(-180,12), new Vector2(180,48)), "", 21, Gold, TextAnchor.MiddleCenter);
+            targetMarker.gameObject.SetActive(false);
+            ApplyControlLayout();
             touchPanel.SetActive(false);
         }
 
+        void ApplyControlLayout()
+        {
+            if (moveStick == null) return;
+            float size = Mathf.Clamp(ControlSize, 0.85f, 1.15f);
+            float offset = Mathf.Clamp(ControlOffset, 0, 60);
+            if (appliedSize == size && appliedOffset == offset && controlsWidth == Screen.width && controlsHeight == Screen.height) return;
+            appliedSize = size; appliedOffset = offset; controlsWidth = Screen.width; controlsHeight = Screen.height;
+            controlsCluster.localScale = Vector3.one * size;
+            controlsCluster.anchoredPosition = new Vector2(-offset, 0);
+            moveStick.radius = 76f * size;
+            moveStick.baseRt.sizeDelta = new Vector2(190,190) * size;
+            moveStick.knob.sizeDelta = new Vector2(88,88) * size;
+            moveStick.SetRest(new Vector2(155 + offset, 160));
+        }
+        void StyleControl(TouchButton button, bool active, bool available)
+        {
+            button.interactable = available;
+            float alpha = available ? (active ? 0.48f : 0.28f) : 0.10f;
+            var normal = button.normal; normal.a = alpha * ControlAlpha;
+            button.normal = normal;
+            if (!button.IsPressed)
+            {
+                button.img.color = normal;
+                var halo = button.halo.color;
+                halo.a = (active ? 0.85f : available ? 0.38f : 0.12f) * ControlAlpha;
+                button.halo.color = halo;
+            }
+        }
         void UpdateTouchLabels()
         {
-            SearchPoint sp; LightSwitch sw;
-            var k = gm.player.CurrentTarget(out sp, out sw);
-            bool hot = k != PlayerController.TargetKind.None;
-            aLabel.text = k == PlayerController.TargetKind.Cat ? "捕まえる"
-                : k == PlayerController.TargetKind.Switch ? (sw.on ? "消す" : "つける")
-                : "調べる";
-            float pulse = hot ? 0.35f + 0.2f * Mathf.Sin(Time.unscaledTime * 6f) : 0.16f;
-            if (!GameInput.Held(GameInput.Action)) { var col = aImg.color; col.a = pulse; aImg.color = col; }
+            ApplyControlLayout();
+            moveStick.followCenter = PlayerPrefs.GetInt("mc.followStick", 1) != 0;
+            var target = gm.player.Selection;
+            bool hot = target.kind != PlayerController.TargetKind.None;
+            aLabel.text = target.kind == PlayerController.TargetKind.Cat ? "捕まえる"
+                : target.kind == PlayerController.TargetKind.Switch ? (target.lightSwitch.on ? "消す" : "つける") : "調べる";
+            StyleControl(actionButton, hot, hot);
             var eq = gm.inv.equipped;
-            xLabel.text = (eq != ItemId.None && gm.inv.Has(eq) && eq != ItemId.Flashlight) ? ShortName(eq) : "使う";
-            yLabel.text = gm.player.FlashlightOn ? "ライト\nOFF" : "ライト\nON";
+            bool hasTool = eq != ItemId.None && gm.inv.Has(eq) && eq != ItemId.Flashlight;
+            xLabel.text = hasTool ? ShortName(eq) : "道具なし";
+            StyleControl(itemButton, false, hasTool);
+            yLabel.text = gm.player.FlashlightOn ? "ライト\n点灯中" : "ライト\n消灯中";
+            StyleControl(lightButton, gm.player.FlashlightOn, true);
+            bool running = GameInput.Held(GameInput.Run);
+            runLabel.text = GameInput.ToggleRunMode ? (running ? "歩くに\n切替" : "走るに\n切替") : "長押し\n走る";
+            StyleControl(runButton, running, true);
+            moveLabel.text = running ? "走行 · 足音でミケに気づかれる" : gm.player.IsSneaking ? "しのび足" : "歩行 · 少し倒すとしのび足";
+            moveLabel.color = running ? new Color(1f,0.7f,0.4f) : Gold;
+            var col = moveStick.baseImg.color;
+            col.r = running ? 1f : 0.86f; col.g = running ? 0.58f : 0.74f; col.b = running ? 0.3f : 0.45f;
+            moveStick.baseImg.color = col;
+        }
+        string TargetCaption(PlayerController.TargetSelection target)
+        {
+            if (target.kind == PlayerController.TargetKind.None) return "";
+            string verb = target.kind == PlayerController.TargetKind.Cat ? "捕まえる"
+                : target.kind == PlayerController.TargetKind.Switch ? (target.lightSwitch.on ? "消す" : "つける") : "調べる";
+            return target.name + " · " + verb;
+        }
+        void UpdateTargetMarker()
+        {
+            if (targetMarker == null) return;
+            var target = gm.player.Selection;
+            bool visible = gm.state == GState.Play && target.kind != PlayerController.TargetKind.None;
+            if (visible)
+            {
+                var cam = FixedCameraSystem.I.cam;
+                Vector3 point = cam.WorldToViewportPoint(target.position + Vector3.up * 0.12f);
+                visible = point.z > 0 && point.x > 0.03f && point.x < 0.97f && point.y > 0.08f && point.y < 0.9f;
+                if (visible)
+                {
+                    Vector2 local;
+                    RectTransformUtility.ScreenPointToLocalPointInRectangle(safe, cam.ViewportToScreenPoint(point), null, out local);
+                    targetMarker.anchoredPosition = local - safe.rect.min;
+                    targetName.text = target.name;
+                }
+            }
+            targetMarker.gameObject.SetActive(visible);
         }
 
         static string ShortName(ItemId id)
@@ -712,14 +792,16 @@ namespace MidnightCalico
             p = Center(p);   // 中身は 1280×720 の枠に収めて中央へ（iPhone の横長画面対策）
             Txt(Box("t", p, 0, 560, 1280, 80), "PAUSE", 54, Gold, TextAnchor.MiddleCenter, titleFont);
             Txt(Box("help", p, 240, 250, 800, 300),
-                "【操作】\n" +
+                "【タッチ】左で移動・少し倒すとしのび足。右の大ボタンで対象を調べる／捕まえる。\n" +
+                "走行は下段でタップ切替／長押しを選択。ライトと道具は右の小ボタン。\n\n" +
+                "【キーボード】\n" +
                 "↑↓←→ / WASD ……… 移動（タンク操作：↑前進 ↓後退 ←→旋回）\n" +
                 "Shift / X ……… 走る（足音が大きく、ミケに気づかれる）\n" +
                 "E / Space ……… 調べる・捕まえる\n" +
                 "Q ……… 装備アイテムを使う　　TAB ……… アイテム画面\n" +
                 "R ……… レトロ画質　　T ……… カメラ基準の操作に切替\n\n" +
                 "【コツ】手の届かない所に隠れたら、好きなもので誘い出そう。",
-                22, new Color(0.88f, 0.86f, 0.8f), TextAnchor.UpperLeft);
+                20, new Color(0.88f, 0.86f, 0.8f), TextAnchor.UpperLeft);
             Btn(p, "再開", 240, 120, 180, 80, () => gm.ClosePause());
             Btn(p, "レトロ画質", 440, 120, 200, 80, () => gm.ToggleRetro(), 24);
             Btn(p, "操作切替", 660, 120, 180, 80, () =>
@@ -729,7 +811,33 @@ namespace MidnightCalico
             }, 24);
             Btn(p, "タッチ表示", 860, 120, 180, 80, () => { bool cur = ShowTouchRaw(); touchOverride = true; touchForced = !cur; gm.Toast(touchForced ? "タッチ操作ボタン：表示" : "タッチ操作ボタン：非表示"); }, 24);
             Btn(p, "最初から", 1060, 120, 180, 80, () => gm.Restart(), 24);
+            runSetting = Btn(p, "", 60, 28, 230, 64, () => { GameInput.SetRunMode(!GameInput.ToggleRunMode); RefreshControlSettings(); }, 21).GetComponentInChildren<Text>();
+            sizeSetting = Btn(p, "", 306, 28, 205, 64, () => { CyclePreference("mc.controlsSize", new[] {0.85f,1f,1.15f}, 1f); }, 21).GetComponentInChildren<Text>();
+            posSetting = Btn(p, "", 527, 28, 205, 64, () => { CyclePreference("mc.controlsOffset", new[] {0f,30f,60f}, 0f); }, 21).GetComponentInChildren<Text>();
+            alphaSetting = Btn(p, "", 748, 28, 205, 64, () => { CyclePreference("mc.controlsAlpha", new[] {0.45f,0.65f,0.9f}, 0.65f); }, 21).GetComponentInChildren<Text>();
+            stickSetting = Btn(p, "", 969, 28, 250, 64, () => { int next = PlayerPrefs.GetInt("mc.followStick",1) == 0 ? 1 : 0; PlayerPrefs.SetInt("mc.followStick",next); PlayerPrefs.Save(); RefreshControlSettings(); }, 21).GetComponentInChildren<Text>();
+            RefreshControlSettings();
             pausePanel.SetActive(false);
+        }
+
+        void CyclePreference(string key, float[] options, float fallback)
+        {
+            float current = PlayerPrefs.GetFloat(key, fallback);
+            int index = 0;
+            for (int i = 0; i < options.Length; i++) if (Mathf.Abs(current-options[i]) < 0.01f) index = i;
+            PlayerPrefs.SetFloat(key, options[(index+1)%options.Length]);
+            PlayerPrefs.Save();
+            appliedSize = -1f;
+            RefreshControlSettings();
+        }
+        void RefreshControlSettings()
+        {
+            if (runSetting == null) return;
+            runSetting.text = GameInput.ToggleRunMode ? "走行：タップ切替" : "走行：長押し";
+            sizeSetting.text = "サイズ：" + Mathf.RoundToInt(ControlSize*100) + "%";
+            posSetting.text = "位置：" + (ControlOffset < 1 ? "標準" : ControlOffset < 40 ? "内側" : "さらに内側");
+            alphaSetting.text = "濃さ：" + Mathf.RoundToInt(ControlAlpha*100) + "%";
+            stickSetting.text = PlayerPrefs.GetInt("mc.followStick",1) != 0 ? "スティック：中心追従" : "スティック：中心固定";
         }
 
         bool ShowTouchRaw()
