@@ -52,15 +52,15 @@ namespace MidnightCalico
 
             // 懐中電灯
             var lg = new GameObject("懐中電灯の光");
-            lg.transform.SetParent(transform, false);
-            lg.transform.localPosition = new Vector3(0.2f, 1.2f, 0.35f);
-            lg.transform.localRotation = Quaternion.Euler(9f, 0f, 0f);
+            lg.transform.SetParent(model.torchAim, false);
+            lg.transform.localPosition = Vector3.zero;
+            lg.transform.localRotation = Quaternion.identity;
             flash = lg.AddComponent<Light>();
             flash.type = LightType.Spot;
-            // 2026-10-29: 懐中電灯の性能アップ（届く距離・明るさ・ホットスポットの広さ）
-            flash.range = 17f;
-            flash.spotAngle = 60f;
-            flash.innerSpotAngle = 24f;
+            // 手元のレンズから前方へ、足元と周辺も見渡せる広さで照らす。
+            flash.range = 21f;
+            flash.spotAngle = 80f;
+            flash.innerSpotAngle = 36f;
             flash.intensity = 4.5f;
             flash.color = new Color(1f, 0.95f, 0.85f);
             flash.shadows = LightShadows.Soft;
@@ -425,6 +425,7 @@ namespace MidnightCalico
     {
         Transform hips, spine, neck, armL, armR, foreL, foreR, legL, legR, shinL, shinR;
         public Transform carry;
+        public Transform torchAim { get; private set; }
         public float moveSpeed;   // 2=走る 1=歩く -1=後退
         public bool danger;
         public bool sneaking;
@@ -465,9 +466,11 @@ namespace MidnightCalico
             foreL = Limb(armL, cardigan, skin, out Transform handL, false);
             foreR = Limb(armR, cardigan, skin, out Transform handR, false);
             // 懐中電灯
-            var torch = Geo.Cyl(handR, "torch", new Vector3(0, -0.02f, 0.08f), 0.022f, 0.2f, torchMat, false);
+            torchAim = Geo.Pivot(handR, "torchAim", new Vector3(0, -0.02f, 0.03f));
+            AimTorch();
+            var torch = Geo.Cyl(torchAim, "torch", new Vector3(0, 0, -0.1f), 0.022f, 0.2f, torchMat, false);
             torch.transform.localRotation = Quaternion.Euler(90, 0, 0);
-            var lensG = Geo.Cyl(handR, "lens", new Vector3(0, -0.02f, 0.18f), 0.026f, 0.01f, lens, false);
+            var lensG = Geo.Cyl(torchAim, "lens", Vector3.zero, 0.026f, 0.01f, lens, false);
             lensG.transform.localRotation = Quaternion.Euler(90, 0, 0);
             carry = Geo.Pivot(spine, "carry", new Vector3(0, 0.25f, 0.3f));
 
@@ -504,6 +507,12 @@ namespace MidnightCalico
         public void Flinch() { act = Act.Flinch; actionT = 0f; }
         public void Crouch() { act = Act.Crouch; actionT = 0f; }
         public void Hold() { act = Act.Hold; actionT = 0f; }
+
+        void AimTorch()
+        {
+            // 腕・胴体のアニメーションに光軸を回されないよう、最後に体の前方へ合わせる。
+            torchAim.rotation = Quaternion.LookRotation(transform.forward, Vector3.up) * Quaternion.Euler(7f, 0, 0);
+        }
 
         void LateUpdate()
         {
@@ -596,6 +605,7 @@ namespace MidnightCalico
             legR.localRotation = Quaternion.Slerp(legR.localRotation, Quaternion.Euler(-legRA - limp * 5f, 0, 0), l);
             shinL.localRotation = Quaternion.Slerp(shinL.localRotation, Quaternion.Euler(kneeL, 0, 0), l);
             shinR.localRotation = Quaternion.Slerp(shinR.localRotation, Quaternion.Euler(kneeR + limp * 15f, 0, 0), l);
+            AimTorch();
         }
     }
 }
