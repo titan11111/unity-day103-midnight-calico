@@ -14,7 +14,7 @@ namespace MidnightCalico
     /// <summary>
     /// 入力をひとつにまとめる：
     ///  ・iPhone の画面コントローラー（左手スティック＋右手ボタン、マルチタッチ）
-    ///  ・Bluetooth ゲームパッド（PS / Xbox / MFi）
+    ///  ・Bluetooth ゲームパッド（Switch / PS / Xbox / MFi）
     ///  ・キーボード（旧 Input Manager / 新 Input System 両対応）
     /// </summary>
     public static class GameInput
@@ -76,7 +76,78 @@ namespace MidnightCalico
 #if ENABLE_INPUT_SYSTEM
         static bool K(Key k) { var kb = Keyboard.current; return kb != null && kb[k].isPressed; }
         static bool KD(Key k) { var kb = Keyboard.current; return kb != null && kb[k].wasPressedThisFrame; }
-        static Gamepad Pad { get { var g = Gamepad.current; if (g != null && g.wasUpdatedThisFrame) padUsed = true; return g; } }
+        static Gamepad activePad;
+        static int padFrame = -1;
+        public static bool PadConnected { get { return Pad != null; } }
+        public static string PadName { get { var p = Pad; return p != null ? p.displayName : "未接続"; } }
+
+        // Input System は位置でボタンを定義する。Switch の印字は右=A、下=B、左=Y。
+        // WebGL の standard mapping でも製品名から判定する（汎用Gamepadとして届くため）。
+        public static bool IsSwitchPad
+        {
+            get
+            {
+                var p = Pad;
+                if (p == null) return false;
+                string name = p.layout + " " + p.displayName + " " + p.description.product + " " + p.description.manufacturer;
+                return name.IndexOf("Switch", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    name.IndexOf("Nintendo", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    name.IndexOf("Joy-Con", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    name.IndexOf("Pro Controller", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+        }
+        static UnityEngine.InputSystem.Controls.ButtonControl InvestigateButton(Gamepad p) { return IsSwitchPad ? p.buttonEast : p.buttonSouth; }
+        static UnityEngine.InputSystem.Controls.ButtonControl ToolButton(Gamepad p) { return IsSwitchPad ? p.buttonSouth : p.buttonWest; }
+        static UnityEngine.InputSystem.Controls.ButtonControl LightButton(Gamepad p) { return IsSwitchPad ? p.buttonWest : p.buttonNorth; }
+
+        // 接続やスティックの微小なノイズだけでは「使用中」にしない。
+        static Gamepad Pad
+        {
+            get
+            {
+                if (padFrame == Time.frameCount) return activePad;
+                padFrame = Time.frameCount;
+                if (activePad != null && (!activePad.added || !activePad.enabled)) activePad = null;
+                foreach (var p in Gamepad.all)
+                {
+                    if (!p.enabled) continue;
+                    bool pressed = p.buttonSouth.wasPressedThisFrame || p.buttonEast.wasPressedThisFrame ||
+                        p.buttonWest.wasPressedThisFrame || p.buttonNorth.wasPressedThisFrame ||
+                        p.startButton.wasPressedThisFrame || p.selectButton.wasPressedThisFrame ||
+                        p.leftShoulder.wasPressedThisFrame || p.rightShoulder.wasPressedThisFrame ||
+                        p.rightTrigger.wasPressedThisFrame || p.dpad.ReadValue().sqrMagnitude > 0.1f ||
+                        p.leftStick.ReadValue().sqrMagnitude > 0.04f;
+                    if (pressed) { activePad = p; padUsed = true; }
+                }
+                if (activePad == null)
+                    foreach (var p in Gamepad.all) if (p.enabled) { activePad = p; break; }
+                return activePad;
+            }
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetPads()
+        {
+            activePad = null; padFrame = -1; padUsed = false;
+            InputSystem.onDeviceChange -= OnPadChange;
+            InputSystem.onDeviceChange += OnPadChange;
+        }
+
+        static void OnPadChange(InputDevice device, InputDeviceChange change)
+        {
+            if (!(device is Gamepad)) return;
+            padFrame = -1;
+            if (device != activePad || (change != InputDeviceChange.Disconnected &&
+                change != InputDeviceChange.Removed && change != InputDeviceChange.Disabled)) return;
+            activePad = null;
+            ClearTouches();
+            var gm = GameManager.I;
+            if (gm != null && gm.state == GState.Play && gm.ui != null)
+            {
+                gm.OpenPause();
+                gm.Toast("コントローラーの接続が切れました。接続してから再開してください。");
+            }
+        }
 
         static bool HeldKey(string id)
         {
@@ -87,7 +158,7 @@ namespace MidnightCalico
                 case Down: return K(Key.S) || K(Key.DownArrow) || (p != null && p.dpad.down.isPressed);
                 case Left: return K(Key.A) || K(Key.LeftArrow) || (p != null && p.dpad.left.isPressed);
                 case Right: return K(Key.D) || K(Key.RightArrow) || (p != null && p.dpad.right.isPressed);
-                case Run: return K(Key.LeftShift) || K(Key.RightShift) || K(Key.X) || (p != null && (p.buttonEast.isPressed || p.rightTrigger.isPressed));
+                case Run: return K(Key.LeftShift) || K(Key.RightShift) || K(Key.X) || (p != null && ((!IsSwitchPad && p.buttonEast.isPressed) || p.rightTrigger.isPressed));
             }
             return false;
         }
@@ -100,12 +171,12 @@ namespace MidnightCalico
                 case Down: return KD(Key.S) || KD(Key.DownArrow) || (p != null && p.dpad.down.wasPressedThisFrame);
                 case Left: return KD(Key.A) || KD(Key.LeftArrow) || (p != null && p.dpad.left.wasPressedThisFrame);
                 case Right: return KD(Key.D) || KD(Key.RightArrow) || (p != null && p.dpad.right.wasPressedThisFrame);
-                case Action: return KD(Key.Space) || KD(Key.E) || KD(Key.Z) || (p != null && p.buttonSouth.wasPressedThisFrame);
-                case Item: return KD(Key.Q) || KD(Key.C) || (p != null && p.buttonWest.wasPressedThisFrame);
-                case Torch: return KD(Key.F) || (p != null && p.buttonNorth.wasPressedThisFrame);
-                case Menu: return KD(Key.Tab) || KD(Key.I) || (p != null && p.selectButton.wasPressedThisFrame);
+                case Action: return KD(Key.Space) || KD(Key.E) || KD(Key.Z) || (p != null && InvestigateButton(p).wasPressedThisFrame);
+                case Item: return KD(Key.Q) || KD(Key.C) || (p != null && ToolButton(p).wasPressedThisFrame);
+                case Torch: return KD(Key.F) || (p != null && LightButton(p).wasPressedThisFrame);
+                case Menu: return KD(Key.Tab) || KD(Key.I) || (p != null && (p.selectButton.wasPressedThisFrame || p.leftShoulder.wasPressedThisFrame));
                 case Cancel: return KD(Key.Escape) || KD(Key.Backspace) || (p != null && p.startButton.wasPressedThisFrame);
-                case Confirm: return KD(Key.Enter) || KD(Key.NumpadEnter) || KD(Key.Space) || KD(Key.E) || KD(Key.Z) || (p != null && p.buttonSouth.wasPressedThisFrame);
+                case Confirm: return KD(Key.Enter) || KD(Key.NumpadEnter) || KD(Key.Space) || KD(Key.E) || KD(Key.Z) || (p != null && InvestigateButton(p).wasPressedThisFrame);
             }
             return false;
         }
@@ -127,11 +198,14 @@ namespace MidnightCalico
             get
             {
                 var kb = Keyboard.current;
-                var p = Gamepad.current;
-                return (kb != null && kb.anyKey.wasPressedThisFrame) || (p != null && (p.buttonSouth.wasPressedThisFrame || p.startButton.wasPressedThisFrame));
+                var p = Pad;
+                return (kb != null && kb.anyKey.wasPressedThisFrame) || (p != null && (InvestigateButton(p).wasPressedThisFrame || p.startButton.wasPressedThisFrame));
             }
         }
 #else
+        public static bool IsSwitchPad { get { return false; } }
+        public static bool PadConnected { get { return Input.GetJoystickNames().Length > 0; } }
+        public static string PadName { get { return PadConnected ? "ゲームパッド" : "未接続"; } }
         static bool K(KeyCode k) { return Input.GetKey(k); }
         static bool KD(KeyCode k) { return Input.GetKeyDown(k); }
         // ゲームパッドのボタン番号は機種で違うため、よく使われる2通りを両方見る

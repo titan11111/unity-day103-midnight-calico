@@ -41,6 +41,7 @@ namespace MidnightCalico.EditorTools
         public static void OpenAndPlay()
         {
             Setup(true);
+            EditorApplication.isPaused = false;
             EditorApplication.isPlaying = true;
         }
 

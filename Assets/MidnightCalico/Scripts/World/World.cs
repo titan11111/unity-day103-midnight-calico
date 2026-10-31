@@ -3,10 +3,231 @@ using UnityEngine;
 
 namespace MidnightCalico
 {
+    /// <summary>室内の時計もゲーム内の午前2時〜6時に合わせて進む。</summary>
+    public class InteriorClock : MonoBehaviour
+    {
+        public Transform hourHand, minuteHand;
+        void LateUpdate()
+        {
+            float minutes = GameManager.I != null ? GameManager.I.GameMinutes : 120f;
+            if (hourHand != null) hourHand.localRotation = Quaternion.Euler(0, 0, -minutes * 0.5f);
+            if (minuteHand != null) minuteHand.localRotation = Quaternion.Euler(0, 0, -minutes * 6f);
+        }
+    }
+
+    /// <summary>突然の地震と、ミケが実際にコンロへ移動して起こすいたずら。</summary>
+    public class NightEvents : MonoBehaviour
+    {
+        GameManager gm;
+        SearchPoint stove;
+        GameObject flames;
+        Transform[] burners = new Transform[2];
+        AudioSource gas;
+        AudioClip rumble, gasClip;
+        Mesh flameMesh;
+        float nextQuake, quakeEnd, nextStove, litAt, nextWarning;
+        bool scorched;
+        public const float QuakeDuration = 20f;
+        float nextFall;
+        bool quakeAnnounced;
+        readonly HashSet<Prop> quakeProps = new HashSet<Prop>();
+        AudioSource quakeAudio;
+        public bool Quaking { get { return gm != null && quakeEnd > gm.elapsed; } }
+        public float QuakeSecondsLeft { get { return gm != null ? Mathf.Max(0f, quakeEnd - gm.elapsed) : 0f; } }
+        public bool StoveOn { get; private set; }
+        public float QuakeStrength { get { return gm != null ? Mathf.Clamp01((quakeEnd - gm.elapsed) / 1.5f) : 0f; } }
+
+        public void Init(GameManager manager)
+        {
+            gm = manager;
+            foreach (var point in gm.house.searches) if (point.name == "コンロ") { stove = point; break; }
+            nextQuake = Random.Range(45f, 75f);
+            nextStove = Random.Range(65f, 95f);
+            rumble = MakeNoise("家の地鳴り", 4.5f, false);
+            quakeAudio = gameObject.AddComponent<AudioSource>();
+            quakeAudio.clip = rumble; quakeAudio.loop = true; quakeAudio.playOnAwake = false; quakeAudio.volume = 0.5f;
+            gasClip = MakeNoise("コンロの燃焼音", 1f, true);
+            flames = new GameObject("コンロの青い炎");
+            flames.transform.SetParent(gm.house.root, false);
+            var vertices = new List<Vector3>();
+            var triangles = new List<int>();
+            // 五徳の周囲に小さな円錐の炎。全てを1メッシュにまとめる。
+            for (int i = 0; i < 10; i++)
+            {
+                float a = i * Mathf.PI * 2f / 10f;
+                Vector3 center = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * 0.075f;
+                int start = vertices.Count;
+                for (int j = 0; j < 4; j++)
+                {
+                    float b = j * Mathf.PI * 0.5f;
+                    vertices.Add(center + new Vector3(Mathf.Cos(b), 0f, Mathf.Sin(b)) * 0.023f);
+                }
+                vertices.Add(center + Vector3.up * (0.1f + (i % 3) * 0.014f));
+                for (int j = 0; j < 4; j++) { triangles.Add(start+j); triangles.Add(start+4); triangles.Add(start+(j+1)%4); }
+            }
+            flameMesh = new Mesh { name = "バーナーの炎" };
+            flameMesh.SetVertices(vertices); flameMesh.SetTriangles(triangles, 0); flameMesh.RecalculateNormals();
+            var material = Mat.Emissive("stoveFlame", new Color(0.06f, 0.35f, 1f), new Color(0.12f, 0.65f, 2f));
+            for (int i = 0; i < burners.Length; i++)
+            {
+                var burner = new GameObject("青い炎" + i);
+                burner.transform.SetParent(flames.transform, false);
+                burner.transform.localPosition = new Vector3(i == 0 ? 14.12f : 14.58f, 0.94f, 0.37f);
+                burner.AddComponent<MeshFilter>().sharedMesh = flameMesh;
+                var renderer = burner.AddComponent<MeshRenderer>(); renderer.sharedMaterial = material;
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+                burners[i] = burner.transform;
+            }
+            gas = flames.AddComponent<AudioSource>();
+            gas.clip = gasClip; gas.loop = true; gas.playOnAwake = false;
+            gas.spatialBlend = 1f; gas.volume = 0.32f; gas.minDistance = 0.6f; gas.maxDistance = 8f;
+            gas.rolloffMode = AudioRolloffMode.Linear;
+            // 音源はバーナーの位置。炎のワールド座標は保つ。
+            flames.transform.position = new Vector3(14.35f, 0.94f, 0.37f);
+            for (int i = 0; i < burners.Length; i++) burners[i].position = new Vector3(i == 0 ? 14.12f : 14.58f, 0.94f, 0.37f);
+            flames.SetActive(false);
+        }
+
+        void Update()
+        {
+            if (gm == null) return;
+            bool playing = gm.state == GState.Play && !gm.caught;
+            if (gas != null)
+            {
+                if (playing && StoveOn && !gas.isPlaying) gas.Play();
+                else if (!playing && gas.isPlaying) gas.Pause();
+            }
+            if (quakeAudio != null)
+            {
+                if (playing && Quaking) { if (!quakeAudio.isPlaying) quakeAudio.UnPause(); if (!quakeAudio.isPlaying) quakeAudio.Play(); quakeAudio.volume = 0.5f * QuakeStrength; }
+                else if (Quaking) quakeAudio.Pause();
+                else quakeAudio.Stop();
+            }
+            if (!playing) return;
+            if (Quaking && gm.elapsed >= nextFall)
+            {
+                DropQuakeProps(); nextFall = gm.elapsed + 2.5f;
+            }
+            else if (!Quaking && quakeAnnounced)
+            {
+                quakeAnnounced = false;
+                gm.Toast(gm.player.IsSheltered ? "揺れがおさまった。A／調べるでテーブルの外へ。" : "……揺れがおさまった。床の小物に気をつけよう。");
+            }
+            if (gm.elapsed >= nextQuake) TriggerQuake();
+            if (!StoveOn && gm.elapsed >= nextStove && stove != null)
+            {
+                // 食事・隠れ・逃走を上書きしない。落ち着いた時に再試行。
+                bool started = gm.cat != null && gm.cat.VisitStove();
+                nextStove = gm.elapsed + (started ? Random.Range(100f, 150f) : 8f);
+            }
+            if (!StoveOn) return;
+            for (int i = 0; i < burners.Length; i++)
+                burners[i].localScale = new Vector3(1f, 0.85f + 0.22f * Mathf.Sin(gm.elapsed * 25f + i * 2f), 1f);
+            if (!scorched && gm.elapsed - litAt >= 45f)
+            {
+                scorched = true;
+                gm.RecordDamage("コンロの焦げ跡", stove.pos);
+                gm.Toast("焦げ臭い……！ キッチンのコンロを調べて消火しよう。");
+                nextWarning = gm.elapsed + 15f;
+            }
+            else if (gm.elapsed >= nextWarning)
+            {
+                gm.Toast("キッチンのコンロに火がついている！ コンロを調べて消火。");
+                nextWarning = gm.elapsed + 15f;
+            }
+        }
+
+        public void TriggerQuake()
+        {
+            if (gm == null || gm.state != GState.Play || gm.caught) return;
+            quakeEnd = gm.elapsed + QuakeDuration;
+            quakeAnnounced = true; quakeProps.Clear(); nextFall = gm.elapsed + 3f;
+            nextQuake = gm.elapsed + Random.Range(110f, 180f);
+            gm.Toast("ガタガタ……！ 地震だ！ キッチンのテーブル脇でA／調べる → 下に隠れる！");
+            if (quakeAudio != null) quakeAudio.Play();
+            if (gm.cat != null && gm.cat.state != CatState.Caught) gm.cat.StartFlee(20f);
+        }
+
+        public int DropQuakeProps()
+        {
+            if (gm == null || gm.state != GState.Play || !Quaking || quakeProps.Count >= 10) return 0;
+            string room = gm.house.RoomName(gm.player.transform.position);
+            // 見えている部屋の高い小物から、棚の縁を越える方向へ押し出す。
+            Prop best = null; float highest = 0.35f;
+            foreach (var prop in Prop.all)
+            {
+                if (prop == null || quakeProps.Contains(prop) || gm.house.RoomName(prop.transform.position) != room) continue;
+                if (prop.transform.position.y > highest) { highest = prop.transform.position.y; best = prop; }
+            }
+            if (best == null) return 0;
+            quakeProps.Add(best);
+            var r = gm.house.RoomAt(best.transform.position);
+            Vector3 direction = r != null ? r.Center - best.transform.position : Vector3.forward;
+            direction.y = 0;
+            best.QuakeFall(direction);
+            return 1;
+        }
+
+        public void IgniteFromCat(CatAI cat)
+        {
+            if (gm == null || gm.state != GState.Play || gm.caught || StoveOn || stove == null || cat != gm.cat) return;
+            // タイマーだけで点火しない。ミケが天板のスイッチに触れた位置か確認。
+            if (Vector3.Distance(cat.transform.position, new Vector3(14.35f, 0.92f, 0.65f)) > 0.3f) return;
+            StoveOn = true; scorched = false; litAt = gm.elapsed; nextWarning = gm.elapsed + 12f;
+            stove.name = "コンロ（消火）";
+            flames.SetActive(true); gas.Play();
+            if (AudioMan.I != null) AudioMan.I.PlayAt(Sfx.Cursor, cat.transform.position, 0.8f, 0.7f);
+            gm.Toast("カチッ、ボッ……！ ミケがコンロに触って火がついた！ 調べて消火！");
+        }
+
+        public bool TryExtinguish(SearchPoint point)
+        {
+            if (!StoveOn || point != stove) return false;
+            StoveOn = false; gas.Stop(); flames.SetActive(false);
+            stove.name = "コンロ";
+            nextStove = gm.elapsed + Random.Range(100f, 150f);
+            gm.Toast("コンロの火を消した。……よし、火の元は大丈夫。");
+            if (AudioMan.I != null) AudioMan.I.Play2D(Sfx.Cursor, 0.65f, 0.8f);
+            return true;
+        }
+
+        static AudioClip MakeNoise(string name, float seconds, bool burning)
+        {
+            const int rate = 22050;
+            var data = new float[Mathf.RoundToInt(rate * seconds)];
+            float smooth = 0f;
+            for (int i = 0; i < data.Length; i++)
+            {
+                float t = i / (float)rate;
+                smooth = Mathf.Lerp(smooth, Random.Range(-1f, 1f), burning ? 0.55f : 0.035f);
+                float env = burning ? 1f : Mathf.Sin(Mathf.PI * t / seconds);
+                data[i] = (smooth * (burning ? 0.18f : 0.7f) + (burning ? 0f : Mathf.Sin(t * 2f * Mathf.PI * 43f) * 0.18f)) * env;
+            }
+            var clip = AudioClip.Create(name, data.Length, 1, rate, false);
+            clip.SetData(data, 0); return clip;
+        }
+
+        void OnDestroy()
+        {
+            if (flameMesh != null) Destroy(flameMesh);
+            if (rumble != null) Destroy(rumble);
+            if (gasClip != null) Destroy(gasClip);
+        }
+    }
+
+    public class TableShelter
+    {
+        public Vector3 entrance, inside;
+        public TableShelter(Vector3 entrance, Vector3 inside) { this.entrance = entrance; this.inside = inside; }
+    }
+
     public class Room
     {
         public string name;
         public Rect rect;          // x = X座標, y = Z座標
+        public float floorY;
+        public bool stairs;
         public Material wallMat;
         public Material floorMat;
         public Room(string n, float x0, float z0, float x1, float z1)
@@ -14,8 +235,13 @@ namespace MidnightCalico
             name = n;
             rect = Rect.MinMaxRect(x0, z0, x1, z1);
         }
-        public bool Contains(Vector3 p) { return rect.Contains(new Vector2(p.x, p.z)); }
-        public Vector3 Center { get { return new Vector3(rect.center.x, 0f, rect.center.y); } }
+        public bool Contains(Vector3 p)
+        {
+            if (!rect.Contains(new Vector2(p.x,p.z))) return false;
+            if (stairs) return p.y >= HouseBuilder.StairHeight(p.z) - 0.45f && p.y < HouseBuilder.StairHeight(p.z) + 1f;
+            return p.y >= floorY - 0.4f && p.y < floorY + 2.6f;
+        }
+        public Vector3 Center { get { return new Vector3(rect.center.x, floorY, rect.center.y); } }
     }
 
     public class CamZone
@@ -24,6 +250,8 @@ namespace MidnightCalico
         public Rect rect;
         public Vector3 pos;
         public Vector3 look;
+        public float minY = -0.5f, maxY = 2.6f;
+        public int priority;
         public float track;   // 0 = 完全固定, 1 = 主人公を追う
         public float fov;
         public CamZone(string room, float x0, float z0, float x1, float z1, Vector3 pos, Vector3 look, float track = 0.3f, float fov = 55f)
@@ -32,7 +260,8 @@ namespace MidnightCalico
             rect = Rect.MinMaxRect(x0, z0, x1, z1);
             this.pos = pos; this.look = look; this.track = track; this.fov = fov;
         }
-        public bool Contains(Vector3 p) { return rect.Contains(new Vector2(p.x, p.z)); }
+        public bool HeightContains(Vector3 p) { return p.y >= minY && p.y < maxY; }
+        public bool Contains(Vector3 p) { return HeightContains(p) && rect.Contains(new Vector2(p.x, p.z)); }
     }
 
     public enum ItemId { None, Flashlight, Toy, Food, Paste, Net, Matatabi, Bandage }
@@ -121,12 +350,50 @@ namespace MidnightCalico
             if (!counted)
             {
                 counted = true;
-                if (GameManager.I != null) GameManager.I.AddDamage();
+                if (GameManager.I != null) GameManager.I.RecordDamage(gameObject.name, transform.position);
             }
+        }
+
+        bool earthquakeFall;
+        float earthquakeHitUntil;
+        public bool IsEarthquakeFall { get { return earthquakeFall; } }
+        public void QuakeFall(Vector3 direction)
+        {
+            if (rb == null) return;
+            earthquakeFall = true;
+            earthquakeHitUntil = Time.time + 4f;
+            rb.WakeUp();
+            rb.AddForce((direction.normalized * 1.7f + Vector3.up * 0.12f) * rb.mass, ForceMode.Impulse);
+            rb.AddTorque(Vector3.Cross(Vector3.up, direction.normalized) * 0.8f * rb.mass, ForceMode.Impulse);
+            if (!counted)
+            {
+                counted = true;
+                if (GameManager.I != null) GameManager.I.RecordDamage(gameObject.name + "（地震で落下）", transform.position);
+            }
+        }
+
+        void FixedUpdate()
+        {
+            var gm = GameManager.I;
+            if (!earthquakeFall || Time.time > earthquakeHitUntil || rb == null || gm == null || gm.state != GState.Play || gm.player == null) return;
+            // 静止中のCharacterControllerにも、落下する剛体の接触を届ける。
+            if (rb.linearVelocity.magnitude < 1.2f) return;
+            var collider = GetComponent<Collider>();
+            var controller = gm.player.GetComponent<CharacterController>();
+            if (collider == null || controller == null) return;
+            Bounds sweep = collider.bounds;
+            sweep.Encapsulate(sweep.center + rb.linearVelocity * Time.fixedDeltaTime);
+            sweep.Expand(0.06f);
+            if (sweep.Intersects(controller.bounds)) gm.player.HitByFallingProp();
         }
 
         void OnCollisionEnter(Collision c)
         {
+            if (earthquakeFall && c.relativeVelocity.magnitude > 1.2f)
+            {
+                var player = c.gameObject.GetComponentInParent<PlayerController>();
+                if (player != null) player.HitByFallingProp();
+            }
             if (c.relativeVelocity.magnitude < 1.6f) return;
             if (Time.time - lastSound < 0.3f) return;
             lastSound = Time.time;

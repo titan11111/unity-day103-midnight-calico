@@ -36,6 +36,10 @@ namespace MidnightCalico
 
         // タイトル・導入・エンディング・ポーズ
         GameObject titlePanel, introPanel, endingPanel, pausePanel;
+        Button[] pauseButtons;
+        int pauseSelection;
+        Text padStatus;
+        Text brightnessSetting;
         Text pressStart, introText;
         int introPage;
         float introChars;
@@ -75,6 +79,8 @@ namespace MidnightCalico
             gm = g;
             LoadFonts();
             EnsureEventSystem();
+            // メニュー入力は GameInput に集約。標準Submitとの二重実行を防ぐ。
+            EventSystem.current.sendNavigationEvents = false;
 
             var cg = new GameObject("UI");
             canvas = cg.AddComponent<Canvas>();
@@ -294,6 +300,8 @@ namespace MidnightCalico
             hud.alpha = Mathf.MoveTowards(hud.alpha, playing || gm.state == GState.Message ? 1f : 0f, dt * 4f);
             clock.text = gm.ClockText;
             roomLabel.text = gm.house.RoomName(gm.player.transform.position);
+            if (gm.nightEvents != null && gm.nightEvents.Quaking)
+                roomLabel.text += "　地震 " + Mathf.CeilToInt(gm.nightEvents.QuakeSecondsLeft) + "秒" + (gm.player.ProtectedFromDebris ? " · テーブルの下" : " · テーブルへ！");
             toastT -= dt;
             var tc = toast.color; tc.a = Mathf.Clamp01(toastT * 1.5f); toast.color = tc;
             redT = Mathf.Max(0f, redT - dt);
@@ -325,7 +333,7 @@ namespace MidnightCalico
                 case GState.Message: UpdateMessage(dt); break;
                 case GState.Inventory: UpdateInventory(); break;
                 case GState.Pause:
-                    if (GameInput.Pressed(GameInput.Cancel) || GameInput.Pressed(GameInput.Menu)) gm.ClosePause();
+                    UpdatePause();
                     break;
                 case GState.Ending:
                     if (endingPanel.activeSelf && endingShownT > 1.5f && GameInput.Pressed(GameInput.Confirm)) gm.Restart();
@@ -499,6 +507,8 @@ namespace MidnightCalico
             var target = gm.player.Selection;
             bool hot = target.kind != PlayerController.TargetKind.None;
             aLabel.text = target.kind == PlayerController.TargetKind.Cat ? "捕まえる"
+                : target.kind == PlayerController.TargetKind.NewCat ? "そっと見守る"
+                : target.kind == PlayerController.TargetKind.Shelter ? (gm.player.IsSheltered ? "外へ出る" : "下に隠れる")
                 : target.kind == PlayerController.TargetKind.Switch ? (target.lightSwitch.on ? "消す" : "つける") : "調べる";
             StyleControl(actionButton, hot, hot);
             var eq = gm.inv.equipped;
@@ -520,6 +530,8 @@ namespace MidnightCalico
         {
             if (target.kind == PlayerController.TargetKind.None) return "";
             string verb = target.kind == PlayerController.TargetKind.Cat ? "捕まえる"
+                : target.kind == PlayerController.TargetKind.NewCat ? "そっと見守る"
+                : target.kind == PlayerController.TargetKind.Shelter ? (gm.player.IsSheltered ? "外へ出る" : "下に隠れる")
                 : target.kind == PlayerController.TargetKind.Switch ? (target.lightSwitch.on ? "消す" : "つける") : "調べる";
             return target.name + " · " + verb;
         }
@@ -777,6 +789,9 @@ namespace MidnightCalico
             ecg.color = cc;
             // 地図
             string here = gm.house.RoomName(gm.player.transform.position);
+            bool upstairs = gm.player.transform.position.y >= 2.6f;
+            foreach(var r in gm.house.rooms)
+                if(mapRooms.TryGetValue(r.name,out var image)) image.gameObject.SetActive(r.stairs || (r.floorY>=2.6f)==upstairs);
             foreach (var kv in mapRooms)
                 kv.Value.color = kv.Key == here ? new Color(0.55f, 0.35f, 0.15f, 1f) : new Color(0.15f, 0.25f, 0.35f, 1f);
             Vector3 pp = gm.player.transform.position;
@@ -800,8 +815,11 @@ namespace MidnightCalico
                 "E / Space ……… 調べる・捕まえる\n" +
                 "Q ……… 装備アイテムを使う　　TAB ……… アイテム画面\n" +
                 "R ……… レトロ画質　　T ……… カメラ基準の操作に切替\n\n" +
-                "【コツ】手の届かない所に隠れたら、好きなもので誘い出そう。",
+                "【Switch】A：調べる／決定　B：道具　Y：ライト点灯切替　ZR：走る\n【共通】左スティック／十字キー：移動\n【PS／Xbox】下ボタン：調べる／決定\n" +
+                "右ボタン／RT：走る　左ボタン：道具　上ボタン：ライト\n" +
+                "LB／Select：アイテム　Start：ポーズ／戻る",
                 20, new Color(0.88f, 0.86f, 0.8f), TextAnchor.UpperLeft);
+            padStatus = Txt(Box("padStatus", p, 100, 210, 1080, 36), "", 20, Gold, TextAnchor.MiddleCenter);
             Btn(p, "再開", 240, 120, 180, 80, () => gm.ClosePause());
             Btn(p, "レトロ画質", 440, 120, 200, 80, () => gm.ToggleRetro(), 24);
             Btn(p, "操作切替", 660, 120, 180, 80, () =>
@@ -817,7 +835,60 @@ namespace MidnightCalico
             alphaSetting = Btn(p, "", 748, 28, 205, 64, () => { CyclePreference("mc.controlsAlpha", new[] {0.45f,0.65f,0.9f}, 0.65f); }, 21).GetComponentInChildren<Text>();
             stickSetting = Btn(p, "", 969, 28, 250, 64, () => { int next = PlayerPrefs.GetInt("mc.followStick",1) == 0 ? 1 : 0; PlayerPrefs.SetInt("mc.followStick",next); PlayerPrefs.Save(); RefreshControlSettings(); }, 21).GetComponentInChildren<Text>();
             RefreshControlSettings();
+            brightnessSetting = Btn(p, "", 960, 580, 260, 52, () =>
+            {
+                float next = FilmLook.Brightness < 1.1f ? 1.2f : FilmLook.Brightness < 1.3f ? 1.4f : 1f;
+                PlayerPrefs.SetFloat("mc.brightness", next);
+                PlayerPrefs.Save();
+                gm.ApplyVisibility();
+                RefreshBrightness();
+            }, 21).GetComponentInChildren<Text>();
+            RefreshBrightness();
+            pauseButtons = pausePanel.GetComponentsInChildren<Button>(true);
             pausePanel.SetActive(false);
+        }
+
+        void UpdatePause()
+        {
+            padStatus.text = "外付けパッド：" + GameInput.PadName + (GameInput.IsSwitchPad ? "　方向で選択・Aで決定・＋で戻る" : "　方向で選択・下ボタンで決定・Startで戻る");
+            if (EventSystem.current != null)
+                for (int i = 0; i < pauseButtons.Length; i++)
+                    if (pauseButtons[i].gameObject == EventSystem.current.currentSelectedGameObject) { pauseSelection = i; break; }
+            if (GameInput.Pressed(GameInput.Cancel) || GameInput.Pressed(GameInput.Menu)) { gm.ClosePause(); return; }
+            Vector2 nav = GameInput.NavPressed;
+            Vector2 direction = Vector2.zero;
+            if (GameInput.Pressed(GameInput.Right) || nav.x > 0) direction = Vector2.right;
+            else if (GameInput.Pressed(GameInput.Left) || nav.x < 0) direction = Vector2.left;
+            else if (GameInput.Pressed(GameInput.Down) || nav.y < 0) direction = Vector2.down;
+            else if (GameInput.Pressed(GameInput.Up) || nav.y > 0) direction = Vector2.up;
+            int next = pauseSelection;
+            float best = float.MaxValue;
+            Vector2 origin = pauseButtons[pauseSelection].transform.localPosition;
+            for (int i = 0; i < pauseButtons.Length && direction != Vector2.zero; i++)
+            {
+                Vector2 offset = (Vector2)pauseButtons[i].transform.localPosition - origin;
+                float forward = Vector2.Dot(offset, direction);
+                if (forward <= 1f) continue;
+                float side = Mathf.Abs(offset.x * direction.y - offset.y * direction.x);
+                float score = forward + side * 3f;
+                if (score < best) { best = score; next = i; }
+            }
+            if (next != pauseSelection)
+            {
+                pauseSelection = next;
+                SelectPauseButton();
+            }
+            if (GameInput.Pressed(GameInput.Confirm)) pauseButtons[pauseSelection].onClick.Invoke();
+        }
+
+        void SelectPauseButton()
+        {
+            if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(pauseButtons[pauseSelection].gameObject);
+        }
+
+        void RefreshBrightness()
+        {
+            brightnessSetting.text = "明るさ：" + (FilmLook.Brightness < 1.1f ? "標準" : FilmLook.Brightness < 1.3f ? "明るい" : "さらに明るい");
         }
 
         void CyclePreference(string key, float[] options, float fallback)
@@ -850,10 +921,16 @@ namespace MidnightCalico
         {
             openedFrame = Time.frameCount;
             pausePanel.SetActive(true);
+            pauseSelection = 0;
+            SelectPauseButton();
             pausePanel.transform.SetAsLastSibling();
             fade.transform.SetAsLastSibling();
         }
-        public void ClosePause() { pausePanel.SetActive(false); }
+        public void ClosePause()
+        {
+            pausePanel.SetActive(false);
+            if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(null);
+        }
 
         // ───────────────────────── タイトル ─────────────────────────
         void BuildTitle()
@@ -871,7 +948,7 @@ namespace MidnightCalico
             pressStart = Txt(Box("press", p, 0, 210, 1280, 50), "PRESS START", 30, Gold, TextAnchor.MiddleCenter, titleFont);
             Txt(Box("guide", p, 0, 40, 1280, 120),
                 "移動：↑↓←→ / WASD（タンク操作）　走る：Shift　調べる・捕まえる：E / Space\n" +
-                "アイテム：TAB　使う：Q　ポーズ：Esc　レトロ画質：R\nスマホはタップで開始（画面のボタンで操作）",
+                "アイテム：TAB　使う：Q　ポーズ：Esc　レトロ画質：R\nスマホはタップ／SwitchはAか＋／他のパッドは下ボタンかStartで開始",
                 20, new Color(0.55f, 0.53f, 0.48f), TextAnchor.MiddleCenter);
             titlePanel.SetActive(false);
         }
@@ -939,6 +1016,7 @@ namespace MidnightCalico
 
         // ───────────────────────── エンディング ─────────────────────────
         Text endTitle, endBody, endRank;
+        RectTransform damageStrip;
         float endingShownT;
 
         void BuildEnding()
@@ -951,6 +1029,8 @@ namespace MidnightCalico
             endBody = Txt(Box("body", p, 240, 230, 800, 290), "", 28, new Color(0.85f, 0.83f, 0.78f), TextAnchor.UpperLeft);
             endRank = Txt(Box("rank", p, 880, 280, 300, 200), "", 150, new Color(0.85f, 0.2f, 0.15f), TextAnchor.MiddleCenter, titleFont);
             Btn(p, "もう一度あそぶ", 490, 80, 300, 90, () => gm.Restart(), 30);
+            // おうちの被害レポート（撮れた証拠写真をポラロイド風に並べる帯。ボタンの下の余白に収める）
+            damageStrip = Box("damageStrip", p, 20, 4, 1240, 72);
             endingPanel.SetActive(false);
         }
 
@@ -980,6 +1060,39 @@ namespace MidnightCalico
                     "ひっかき傷　" + scratches + "回\n\n" +
                     "ヒント：好きなもので誘い出し、夢中になっているうちに捕まえよう。";
                 endRank.text = "";
+            }
+            BuildDamageStrip();
+        }
+
+        /// <summary>おうちの被害レポート：捕まえる/朝を迎える瞬間までに撮れた証拠写真をポラロイド風に並べる</summary>
+        void BuildDamageStrip()
+        {
+            if (damageStrip == null) return;
+            for (int i = damageStrip.childCount - 1; i >= 0; i--)
+                Destroy(damageStrip.GetChild(i).gameObject);
+            var events = gm.damageEvents;
+            if (events.Count == 0) return;
+            float slotW = 1240f / events.Count;
+            float cardW = Mathf.Min(110f, slotW - 8f);
+            for (int i = 0; i < events.Count; i++)
+            {
+                var ev = events[i];
+                float cx = i * slotW + slotW * 0.5f;
+                var card = Box("photo" + i, damageStrip, cx - cardW * 0.5f, 0, cardW, 72);
+                Img(card, new Color(0.96f, 0.95f, 0.9f));
+                var photoBox = Box("pic", card, 4, 16, cardW - 8, cardW - 8 - 16 > 0 ? Mathf.Min(44f, cardW - 8f) : 40f);
+                if (ev.photo != null)
+                {
+                    var raw = photoBox.gameObject.AddComponent<RawImage>();
+                    raw.texture = ev.photo;
+                    raw.uvRect = new UnityEngine.Rect(0.15f, 0.15f, 0.7f, 0.7f); // 中央寄りをクロップして被害箇所を見せやすくする
+                }
+                else
+                {
+                    Img(photoBox, new Color(0.6f, 0.58f, 0.55f));
+                }
+                string caption = ev.room + "：" + ev.propName;
+                Txt(Box("cap", card, 2, 0, cardW - 4, 16), caption, 11, new Color(0.15f, 0.13f, 0.1f), TextAnchor.MiddleCenter);
             }
         }
     }

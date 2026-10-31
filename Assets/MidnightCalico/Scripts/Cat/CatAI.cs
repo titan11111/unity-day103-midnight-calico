@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace MidnightCalico
 {
-    public enum CatState { Idle, Wander, Alert, Flee, Hidden, Lured, Eating, Licking, Playing, Rolling, Zoomies, Hissing, Caught }
+    public enum CatState { Idle, Wander, Alert, Flee, Hidden, Lured, Eating, Licking, Playing, Rolling, Zoomies, Hissing, Caught, Stove }
 
     public enum CatchResult { Success, Fail, Unreachable, TooFar }
 
@@ -27,13 +27,16 @@ namespace MidnightCalico
         LureBowl targetBowl;
         float stateT, idleT, nearT, boredom, nextZoomies, smellT, meowT, alertMemory;
         bool unaware = true;
+        bool eatShotActive, goroShown;  // カリカリ演出（寄りカット・ゴロゴロのピーク）の進行状況
         float curSpeed;
+        float stoveTouchT;
         AudioSource purr;
         Vector3 lastPlayerPos;
         float lastSeenT = -99f;
         Dictionary<string, Vector3> roomCamPos;
 
         const float WalkSpeed = 0.75f, TrotSpeed = 1.8f, FleeSpeed = 4.6f, ZoomSpeed = 5.2f;
+        const float MinCamDist = 0.9f;  // 猫がカメラへ近づきすぎない下限距離（ニアクリップ付近の巨大化防止）
 
         public void Init(House h)
         {
@@ -146,6 +149,22 @@ namespace MidnightCalico
             float d = PlayerDist;
             switch (state)
             {
+                case CatState.Stove:
+                    if (d < 1.8f && Notices(out loud)) { StartFlee(12f); break; }
+                    if (TryLures()) break;
+                    if (stateT > 45f) { StartWander(); break; }
+                    if (FollowPath(TrotSpeed))
+                    {
+                        stoveTouchT += dt;
+                        model.pose = CatPose.Play;
+                        if (stoveTouchT >= 0.8f)
+                        {
+                            var events = GameManager.I.nightEvents;
+                            if (events != null) events.IgniteFromCat(this);
+                            StartFlee(12f);
+                        }
+                    }
+                    break;
                 case CatState.Idle:
                 case CatState.Wander:
                     stress = Mathf.Max(0f, stress - dt * 3f);
@@ -247,8 +266,18 @@ namespace MidnightCalico
                                 pasteMode = false;
                                 SetState(CatState.Licking);
                             }
-                            else SetState(targetBowl.kind == ItemId.Matatabi ? CatState.Rolling : CatState.Eating);
+                            bool eatingFood = targetBowl.kind != ItemId.Matatabi;
+                            SetState(eatingFood ? CatState.Eating : CatState.Rolling);
                             if (AudioMan.I != null) AudioMan.I.PlayAt(Sfx.MeowShort, transform.position, 0.8f, 1.15f);
+                            if (eatingFood)
+                            {
+                                // カリカリの寄りカット：短い演出の後、通常カメラへ自動で戻す
+                                eatShotActive = true;
+                                goroShown = false;
+                                FixedCameraSystem.I.Shot(
+                                    transform.position + Vector3.up * 0.32f - transform.forward * 0.45f + transform.right * 0.18f,
+                                    transform.position + Vector3.up * 0.1f);
+                            }
                         }
                     }
                     break;
@@ -262,11 +291,29 @@ namespace MidnightCalico
                             if (Random.value < 0.5f) { StartFlee(12f); break; }
                             stateT += 1.5f;
                         }
+                        if (state == CatState.Eating)
+                        {
+                            if (eatShotActive && stateT > 1.6f)
+                            {
+                                FixedCameraSystem.I.CancelShot();
+                                eatShotActive = false;
+                            }
+                            // 食べ切る少し前に「めっちゃゴロゴロ」のピークを見せる
+                            if (!goroShown && stateT > dur * 0.55f)
+                            {
+                                goroShown = true;
+                                model.megaPurr = true;
+                                if (purr != null) purr.pitch = 1.2f;
+                                if (GameManager.I != null) GameManager.I.Toast("見て見て、ゴロゴロいってる〜");
+                            }
+                        }
                         if (stateT > dur)
                         {
                             if (targetBowl != null) targetBowl.Consume();
                             targetBowl = null;
                             stress = 0f;
+                            model.megaPurr = false;
+                            if (purr != null) purr.pitch = 1f;
                             SetState(CatState.Idle); idleT = 2f;
                         }
                     }
@@ -295,6 +342,19 @@ namespace MidnightCalico
         }
 
         // ───────────────────────── 行動 ─────────────────────────
+        public bool VisitStove()
+        {
+            if (!Playing || (state != CatState.Idle && state != CatState.Wander)) return false;
+            var g = house.graph;
+            Vector3 approach = new Vector3(14.35f, 0f, 1.15f);
+            BuildPath(g.Nearest(transform.position, RoomName), g.Nearest(approach, "キッチン"), approach, false, false, 0f);
+            path.Add(new WP { p = new Vector3(14.35f, 0.92f, 0.65f), forceY = true });
+            spot = null;
+            stoveTouchT = 0f;
+            SetState(CatState.Stove);
+            return true;
+        }
+
         void StartWander()
         {
             var g = house.graph;
@@ -330,6 +390,9 @@ namespace MidnightCalico
 
         public void StartFlee(float addStress)
         {
+            // カリカリ演出の途中で驚いて逃げた場合、寄りカットのまま固まらないよう必ずカメラを戻す
+            if (eatShotActive) { FixedCameraSystem.I.CancelShot(); eatShotActive = false; }
+            if (goroShown) { model.megaPurr = false; if (purr != null) purr.pitch = 1f; }
             stress = Mathf.Clamp(stress + addStress, 0f, 100f);
             unaware = false;
             alertMemory = 10f;
@@ -381,8 +444,26 @@ namespace MidnightCalico
                 transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(to), 540f * Time.deltaTime);
             }
             pos.y = Mathf.MoveTowards(pos.y, GroundAt(pos, pos.y), 3.5f * Time.deltaTime);
-            transform.position = pos;
+            transform.position = ClampCameraDistance(pos);
             curSpeed = spd;
+        }
+
+        /// <summary>どの状態でも、今アクティブなカメラに近づきすぎないようXZ位置を補正する。
+        /// ニアクリップ(0.05)付近では遠近法で猫が画面いっぱいに巨大化して見えるため、最低距離を保証する。</summary>
+        Vector3 ClampCameraDistance(Vector3 pos)
+        {
+            var cs = FixedCameraSystem.I;
+            if (cs == null || cs.cam == null) return pos;
+            Vector3 camPos = cs.cam.transform.position;
+            Vector3 flat = new Vector3(pos.x - camPos.x, 0f, pos.z - camPos.z);
+            float d = flat.magnitude;
+            if (d < MinCamDist && d > 0.0001f)
+            {
+                Vector3 pushed = camPos + flat / d * MinCamDist;
+                pos.x = pushed.x;
+                pos.z = pushed.z;
+            }
+            return pos;
         }
 
         void KnockProps()
@@ -580,7 +661,8 @@ namespace MidnightCalico
                 transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(to), 720f * Time.deltaTime);
             float gy = wp.forceY && d < 0.9f ? wp.p.y : GroundAt(pos, pos.y);
             pos.y = Mathf.MoveTowards(pos.y, gy, 4.5f * Time.deltaTime);
-            transform.position = pos;
+            // 隠れ場所へ入る最後の詰め（forceY）はカメラ回避で潜り込み位置がズレないよう除外する
+            transform.position = (wp.forceY && d < 0.9f) ? pos : ClampCameraDistance(pos);
             if (arrived && (!wp.forceY || Mathf.Abs(pos.y - wp.p.y) < 0.03f)) pathIdx++;
             curSpeed = spd;
             return pathIdx >= path.Count;
@@ -607,6 +689,7 @@ namespace MidnightCalico
                 case CatState.Idle:
                     model.pose = (Mathf.FloorToInt(Time.time / 7f + GetInstanceID()) % 3 == 0) ? CatPose.Groom : CatPose.Sit;
                     break;
+                case CatState.Stove: model.pose = stoveTouchT > 0f ? CatPose.Play : CatPose.Stand; break;
                 case CatState.Wander: model.pose = CatPose.Stand; break;
                 case CatState.Alert: model.pose = CatPose.Crouch; break;
                 case CatState.Hissing: model.pose = CatPose.Hiss; break;
@@ -635,18 +718,96 @@ namespace MidnightCalico
             model.glowTarget = glow;
         }
 
-        /// <summary>捕まえた後、主人公の腕の中へ</summary>
-        public void AttachTo(Transform hand)
+        /// <summary>捕まえた後、主人公の両手の間へ。rearが猫のお尻側（haunch）、frontが胸側（chest）に来るよう置く。
+        /// 首を掴む表現を避け、お尻を下から支え・脇を支える抱き方にするための2点配置。</summary>
+        public void AttachTo(Transform rear, Transform front)
         {
             SetState(CatState.Caught);
-            transform.SetParent(hand, false);
-            transform.localPosition = new Vector3(0f, -0.15f, 0.1f);
-            transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+            transform.SetParent(rear.parent, false);
+            Vector3 mid = (rear.localPosition + front.localPosition) * 0.5f;
+            transform.localPosition = mid;
+            Vector3 dir = front.localPosition - rear.localPosition;
+            if (dir.sqrMagnitude > 0.0001f)
+                transform.localRotation = Quaternion.LookRotation(dir.normalized, Vector3.up);
         }
 
         public string DebugLabel()
         {
             return state + (spot != null ? " @" + spot.name : "") + " stress=" + stress.ToString("0");
+        }
+    }
+
+    /// <summary>2階の新入り。ミケの単一インスタンスや捕獲目標には干渉しない。</summary>
+    public class TimidCat : MonoBehaviour
+    {
+        public CatModel model;
+        public float Fear { get; private set; } = 0.9f;
+        public bool Retreating { get; private set; }
+        House house;
+        Vector3 retreatTarget;
+        float moveUntil, nextVoice, sootheAt = -99f;
+        readonly Vector3[] refuges = { new Vector3(13.8f,3f,12.7f), new Vector3(14.5f,3f,11.5f), new Vector3(12.8f,3f,12.4f) };
+        public void Init(House h)
+        {
+            house=h;
+            transform.localScale=Vector3.one*0.85f;
+            model=gameObject.AddComponent<CatModel>(); model.Build(true);
+            model.pose=CatPose.Hide; model.earsBack=true; model.fear=Fear;
+            Geo.SetLayerRecursive(gameObject,2);
+            BlobShadow.Attach(transform,0.29f,0.5f,0.23f);
+            nextVoice=12f;
+        }
+        public bool InReach(PlayerController player)
+        {
+            return player != null && Mathf.Abs(player.transform.position.y-transform.position.y) < 0.8f &&
+                Vector3.Distance(player.transform.position,transform.position) < 1.5f;
+        }
+        void Update()
+        {
+            var gm=GameManager.I;
+            if(gm==null || gm.state!=GState.Play || house==null) return;
+            var player=gm.player;
+            bool sameFloor=Mathf.Abs(player.transform.position.y-transform.position.y)<1f;
+            float distance=sameFloor ? Vector3.Distance(player.transform.position,transform.position):99f;
+            bool quake=gm.nightEvents!=null && gm.nightEvents.Quaking;
+            bool startled=quake || (sameFloor && distance<2.5f && (player.IsRunning || (player.IsMoving && !player.IsSneaking && distance<1.6f)));
+            Fear=Mathf.Clamp01(Fear+Time.deltaTime*(startled?0.35f:distance>2.2f?-0.025f:-0.005f));
+            if(startled && gm.elapsed>=moveUntil+1f && gm.elapsed-sootheAt>2f)
+            {
+                float best=-1f;
+                foreach(var point in refuges)
+                {
+                    float score=Vector3.Distance(point,player.transform.position);
+                    if(score>best) { best=score; retreatTarget=point; }
+                }
+                moveUntil=gm.elapsed+1.8f;
+            }
+            Retreating=gm.elapsed<moveUntil && Vector3.Distance(transform.position,retreatTarget)>0.06f;
+            if(Retreating)
+            {
+                Vector3 delta=retreatTarget-transform.position;delta.y=0f;
+                float step=1.15f*Time.deltaTime;
+                Vector3 dir=delta.normalized;
+                if(!Physics.SphereCast(transform.position+Vector3.up*0.16f,0.11f,dir,out var hit,Mathf.Min(step,delta.magnitude)+0.05f,~(1<<2),QueryTriggerInteraction.Ignore))
+                    transform.position+=dir*Mathf.Min(step,delta.magnitude);
+                transform.rotation=Quaternion.RotateTowards(transform.rotation,Quaternion.LookRotation(dir),360f*Time.deltaTime);
+            }
+            model.speed=Retreating?1.15f:0f; model.pose=Fear>0.45f?CatPose.Hide:CatPose.Sit;
+            model.earsBack=Fear>0.45f; model.fear=Fear; model.lookTarget=sameFloor && distance<5f?(Vector3?)(player.transform.position+Vector3.up*0.7f):null;
+            if(Fear>0.55f && distance<5f && gm.elapsed>nextVoice)
+            {
+                nextVoice=gm.elapsed+Random.Range(14f,24f);
+                if(AudioMan.I!=null) AudioMan.I.PlayAt(Sfx.MeowShort,transform.position,0.25f,1.25f);
+            }
+        }
+        public void Soothe()
+        {
+            var gm=GameManager.I;
+            if(gm==null || gm.state!=GState.Play || !InReach(gm.player) || gm.elapsed-sootheAt<2f) return;
+            sootheAt=gm.elapsed; moveUntil=0f; Retreating=false;
+            Fear=Mathf.Max(0.15f,Fear-0.2f);
+            gm.Toast(Fear>0.45f?"新入り猫が耳を伏せて震えている。追いかけず、そっと見守ろう。":"新入り猫が少し落ち着いた。小さく、にゃ……と鳴いた。");
+            if(AudioMan.I!=null) AudioMan.I.PlayAt(Sfx.MeowShort,transform.position,0.25f,1.2f);
         }
     }
 }

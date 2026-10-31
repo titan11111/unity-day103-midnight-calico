@@ -46,7 +46,29 @@ namespace MidnightCalico
             bg.depth = -100;
         }
 
+        Vector3 quakeOffset;
+        Quaternion quakeRotation = Quaternion.identity;
         void LateUpdate()
+        {
+            if (cam == null) return;
+            // 前フレームの揺れを戻してから通常カメラを計算し、ずれの蓄積を防ぐ。
+            cam.transform.position -= quakeOffset;
+            cam.transform.rotation *= Quaternion.Inverse(quakeRotation);
+            quakeOffset = Vector3.zero;
+            quakeRotation = Quaternion.identity;
+            UpdateCamera();
+            var gm = GameManager.I;
+            if (gm == null || gm.state != GState.Play || gm.nightEvents == null) return;
+            float strength = gm.nightEvents.QuakeStrength;
+            if (strength <= 0f) return;
+            float t = gm.elapsed;
+            quakeOffset = new Vector3(Mathf.Sin(t * 39f), Mathf.Sin(t * 47f) * 0.4f, 0f) * (0.035f * strength);
+            quakeRotation = Quaternion.Euler(0f, 0f, Mathf.Sin(t * 32f) * 0.7f * strength);
+            cam.transform.position += quakeOffset;
+            cam.transform.rotation *= quakeRotation;
+        }
+
+        void UpdateCamera()
         {
             var p = PlayerController.I;
             if (p == null || cam == null) return;
@@ -58,11 +80,10 @@ namespace MidnightCalico
             }
             Vector3 pp = p.transform.position;
             CamZone z = null;
-            if (current != null && ContainsWithMargin(current.rect, pp, 0.12f)) z = current;
-            else
-            {
-                foreach (var c in house.zones) if (c.Contains(pp)) { z = c; break; }
-            }
+            foreach (var candidate in house.zones)
+                if (candidate.Contains(pp) && (z == null || candidate.priority > z.priority)) z = candidate;
+            if (current != null && current.HeightContains(pp) && ContainsWithMargin(current.rect, pp, 0.12f) &&
+                (z == null || current.priority >= z.priority)) z = current;
             if (z == null) z = current;
             if (z == null) return;
 
@@ -94,6 +115,13 @@ namespace MidnightCalico
             overrideShot = true;
             overridePos = pos;
             overrideLook = look;
+        }
+
+        /// <summary>Shot()による演出カットを終え、通常の固定カメラへ戻す（エンディング以外の一時演出用）</summary>
+        public void CancelShot()
+        {
+            overrideShot = false;
+            current = null;
         }
 
         public void SetRetro(bool on)

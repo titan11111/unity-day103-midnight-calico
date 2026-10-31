@@ -16,6 +16,7 @@ namespace MidnightCalico
         public readonly List<CamZone> zones = new List<CamZone>();
         public readonly List<HideSpot> hides = new List<HideSpot>();
         public readonly List<SearchPoint> searches = new List<SearchPoint>();
+        public readonly List<TableShelter> shelters = new List<TableShelter>();
         public readonly List<LightSwitch> switches = new List<LightSwitch>();
         public readonly CatGraph graph = new CatGraph();
         public Vector3 playerSpawn = new Vector3(7f, 0f, 2.4f);
@@ -69,6 +70,7 @@ namespace MidnightCalico
             BuildContactShadows();
             DefineCameraZones();
             DefineGraph();
+            BuildUpperFloor();
             foreach (var s in h.hides)
             {
                 s.room = h.RoomName(s.approach);
@@ -80,6 +82,65 @@ namespace MidnightCalico
             try { StaticBatchingUtility.Combine(root.gameObject); }
             catch (System.Exception e) { Debug.LogWarning("[MidnightCalico] static batching skipped: " + e.Message); }
             return h;
+        }
+
+        public const float UpperFloorY = 3f;
+        public static float StairHeight(float z) { return Mathf.Clamp01((z - 5.8f) / 6.6f) * UpperFloorY; }
+        static void BuildUpperFloor()
+        {
+            // 既存廊下の奥に実際の段差でつながる階段。ワープではなくCharacterControllerで昇降。
+            h.rooms.Insert(0,new Room("階段",6.8f,5.8f,7.85f,12.4f) { stairs=true });
+            h.rooms.Add(new Room("2階 寝室",0f,7f,6f,14f) { floorY=3f });
+            h.rooms.Add(new Room("2階 書斎",8f,7f,16f,14f) { floorY=3f });
+            h.rooms.Add(new Room("2階 踊り場",6f,12.4f,8f,14f) { floorY=3f });
+            for(int i=0;i<20;i++)
+            {
+                float z=5.8f+i*0.33f;
+                Geo.BoxMM(root,"階段の踏板"+i,6.85f,-0.05f,z,7.8f,(i+1)*0.15f,z+0.33f,woodLight);
+                Geo.BoxMM(root,"階段の鼻先"+i,6.85f,(i+1)*0.15f-0.025f,z,7.8f,(i+1)*0.15f,z+0.035f,woodDark,false);
+                if(i%2==0)
+                {
+                    float y=(i+1)*0.15f;
+                    Geo.Cyl(root,"階段手すり支柱",new Vector3(7.87f,y+0.38f,z+0.16f),0.025f,0.76f,woodDark,false);
+                }
+            }
+            var rail=Geo.Box(root,"階段の手すり",new Vector3(7.87f,2.25f,9.1f),new Vector3(0.065f,0.065f,7.25f),woodDark,false);
+            rail.transform.rotation=Quaternion.Euler(-24.44f,0,0);
+            Geo.BoxMM(root,"2階寝室の床",0f,2.8f,7f,6f,3f,14f,woodFloorDark);
+            Geo.BoxMM(root,"2階書斎の床",8f,2.8f,7f,16f,3f,14f,woodFloorDark);
+            Geo.BoxMM(root,"2階踊り場の床",6f,2.8f,12.4f,8f,3f,14f,woodFloorDark);
+            Geo.BoxMM(root,"2階北壁",0f,3f,13.92f,16f,5.5f,14f,woodWhite);
+            Geo.BoxMM(root,"2階西壁",0f,3f,7f,0.12f,5.5f,14f,woodWhite);
+            Geo.BoxMM(root,"2階東壁",15.88f,3f,7f,16f,5.5f,14f,woodWhite);
+            Geo.BoxMM(root,"2階寝室南壁",0f,3f,7f,6f,5.5f,7.12f,woodWhite);
+            Geo.BoxMM(root,"2階書斎南壁",8f,3f,7f,16f,5.5f,7.12f,woodWhite);
+            foreach(float x in new[]{5.9f,8f})
+            {
+                Geo.BoxMM(root,"2階廊下との壁",x,3f,7f,x+0.1f,5.5f,12.5f,woodWhite);
+                Geo.BoxMM(root,"2階出入口の上枠",x,5.05f,12.5f,x+0.1f,5.5f,13.75f,woodWhite);
+                Geo.BoxMM(root,"2階ドア端",x,3f,13.75f,x+0.1f,5.5f,14f,woodWhite);
+            }
+            Geo.BoxMM(root,"2階天井",0f,5.5f,7f,16f,5.6f,14f,ceilingMat,false);
+            Geo.BoxMM(root,"2階ベッド枠",1f,3f,9f,3f,3.4f,12.2f,woodDark);
+            Geo.BoxMM(root,"2階マットレス",1.05f,3.4f,9.05f,2.95f,3.6f,12.15f,sheetFab);
+            Geo.BoxMM(root,"2階掛け布団",1.05f,3.61f,9.1f,2.95f,3.7f,11.5f,blanketFab,false);
+            Geo.Sph(root,"2階枕",new Vector3(2f,3.68f,11.85f),new Vector3(0.9f,0.18f,0.4f),pillowFab);
+            Geo.BoxMM(root,"2階クローゼット",0.15f,3f,12.6f,1.4f,5.1f,13.7f,woodLight);
+            Geo.BoxMM(root,"2階机の天板",13.7f,3.72f,7.3f,15.6f,3.8f,8.2f,woodLight);
+            foreach(float x in new[]{13.8f,15.5f}) Geo.BoxMM(root,"机の脚",x,3f,7.4f,x+0.08f,3.72f,8.1f,woodDark);
+            Geo.BoxMM(root,"書斎の本棚",8.3f,3f,7.2f,10f,4.9f,7.6f,woodDark);
+            for(int i=0;i<9;i++) Geo.BoxMM(root,"書斎の本",8.4f+i*0.16f,4f,7.61f,8.5f+i*0.16f,4.5f,7.8f,i%2==0?bookA:bookC,false);
+            Geo.BoxMM(root,"新入り猫のベッド",13.4f,3f,12.3f,14.3f,3.06f,13.2f,beige,false);
+            Geo.BoxMM(root,"猫の水皿",14.55f,3f,12.5f,14.8f,3.05f,12.75f,ceramic,false);
+            PropBox("2階の写真立て",new Vector3(14.1f,3.92f,7.65f),new Vector3(0.18f,0.24f,0.035f),woodLight,0.2f,true);
+            AddLight(new Vector3(3f,5.1f,11f),new Color(0.8f,0.85f,1f),0.7f,7f);
+            AddLight(new Vector3(12f,5.1f,11f),new Color(1f,0.85f,0.65f),0.8f,7f);
+            Search("2階の机",new Vector3(14.4f,3f,8.7f),ItemId.Bandage,1,"書斎の机に絆創膏がある。奥で新入り猫が小さく震えている。");
+            Search("2階のベッド",new Vector3(3.5f,3f,11f),ItemId.None,0,"寝室のベッド。廊下の階段で1階へ戻れる。");
+            h.zones.Insert(0,new CamZone("階段",6.7f,5.55f,7.95f,12.5f,new Vector3(7f,5.3f,4.9f),new Vector3(7f,1.8f,9.5f),0.45f,58f) { minY=-0.4f,maxY=3.4f,priority=10 });
+            h.zones.Add(new CamZone("2階 踊り場",6f,12.4f,8f,14f,new Vector3(7f,5.2f,10.5f),new Vector3(7f,3.7f,13.2f),0.25f) { minY=2.6f,maxY=5.7f,priority=20 });
+            h.zones.Add(new CamZone("2階 寝室",0f,7f,6f,14f,new Vector3(5.45f,5.25f,13.45f),new Vector3(2.6f,3.6f,10.4f),0.25f) { minY=2.6f,maxY=5.7f,priority=20 });
+            h.zones.Add(new CamZone("2階 書斎",8f,7f,16f,14f,new Vector3(8.5f,5.2f,13.45f),new Vector3(13.8f,3.45f,11.8f),0.3f) { minY=2.6f,maxY=5.7f,priority=20 });
         }
 
         // ───────────────────────── 質感 ─────────────────────────
@@ -175,8 +236,11 @@ namespace MidnightCalico
                 }
                 Geo.BoxMM(root, r.name + "_床", r.rect.xMin, -0.2f, z0, r.rect.xMax, 0f, r.rect.yMax, fm);
             }
-            var ceil = Geo.BoxMM(root, "天井", 0f, H, 0f, 16f, H + 0.1f, 14f, ceilingMat, false);
-            ceil.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
+            // 階段の吹抜けを残す。天井は視界用で、当たり判定は2階の床が担当。
+            Geo.BoxMM(root, "天井_西", 0f,H,0f,6.15f,H+0.1f,14f,ceilingMat,false);
+            Geo.BoxMM(root, "天井_東", 7.85f,H,0f,16f,H+0.1f,14f,ceilingMat,false);
+            Geo.BoxMM(root, "天井_廊下南", 6.15f,H,0f,7.85f,H+0.1f,5.8f,ceilingMat,false);
+            Geo.BoxMM(root, "天井_踊り場", 6.15f,H,12.4f,7.85f,H+0.1f,14f,ceilingMat,false);
             // 外の地面（窓の外が真っ黒にならないように）
             Geo.BoxMM(root, "外構", -10f, -0.5f, -10f, 26f, -0.4f, 24f, extMat, false);
         }
@@ -626,6 +690,7 @@ namespace MidnightCalico
             Geo.BoxMM(root, "テレビ", 0.16f, 0.48f, 3.0f, 0.24f, 1.08f, 4.4f, blackPl);
             Geo.BoxMM(root, "テレビ脚", 0.2f, 0.45f, 3.55f, 0.36f, 0.48f, 3.85f, blackPl, false);
             QuadFacing("テレビ画面", new Vector3(0.245f, 0.78f, 3.7f), new Vector2(1.3f, 0.54f), Vector3.right, tvScreen);
+            BuildTelevisionDetails();
             AddLight(new Vector3(0.5f, 0.8f, 3.7f), new Color(0.3f, 0.4f, 0.8f), 0.25f, 2.0f, true, 0.4f); // 待機ランプの残光
             // ローテーブル
             Geo.BoxMM(root, "ローテーブル", 1.8f, 0.36f, 3.0f, 2.8f, 0.40f, 4.4f, woodLight);
@@ -685,7 +750,7 @@ namespace MidnightCalico
             // 窓
             Window(new Vector3(3.3f, 1.4f, 0f), Vector3.forward, 2.0f, 1.2f, true);
             // 壁の時計
-            Geo.Cyl(root, "壁掛け時計", new Vector3(3.0f, 1.9f, 6.93f), 0.16f, 0.04f, woodLight, false).transform.rotation = Quaternion.Euler(90, 0, 0);
+            DetailedClock("壁掛け時計", new Vector3(3f, 1.9f, 6.88f), Vector3.back, 0.23f);
             // 小物
             PropCyl("マグカップ", new Vector3(2.1f, 0.46f, 3.4f), 0.04f, 0.1f, ceramic, 0.25f, true);
             PropBox("リモコン", new Vector3(2.5f, 0.42f, 3.9f), new Vector3(0.05f, 0.025f, 0.18f), blackPl, 0.15f, false);
@@ -704,6 +769,78 @@ namespace MidnightCalico
         }
 
         // ───────────────────────── 和室 ─────────────────────────
+        static void BuildTelevisionDetails()
+        {
+            // 既存のテレビを薄い縁・スピーカー・待機LEDまで仕上げる。追加ライトは使わない。
+            var trim = Mat.Make("tvBrushedTrim", new Color(0.24f, 0.25f, 0.27f), null, 0.65f, 0.65f);
+            Geo.Box(root, "TV上縁", new Vector3(0.251f, 1.065f, 3.7f), new Vector3(0.018f, 0.025f, 1.4f), trim, false);
+            Geo.Box(root, "TV下縁", new Vector3(0.251f, 0.495f, 3.7f), new Vector3(0.018f, 0.03f, 1.4f), trim, false);
+            for (int i = 0; i < 12; i++)
+                Geo.Box(root, "TVスピーカー孔", new Vector3(0.262f, 0.51f, 3.21f + i * 0.086f), new Vector3(0.005f, 0.009f, 0.04f), blackPl, false);
+            Geo.Sph(root, "TV待機LED", new Vector3(0.265f, 0.514f, 4.31f), Vector3.one * 0.014f,
+                Mat.Emissive("tvStandbyLED", new Color(0.5f, 0.05f, 0.02f), new Color(0.6f, 0.025f, 0.01f)));
+            var tex = new Texture2D(128, 64, TextureFormat.RGBA32, false);
+            tex.name = "TVの暗いガラス反射";
+            var pixels = new Color[128 * 64];
+            for (int y = 0; y < 64; y++) for (int x = 0; x < 128; x++)
+            {
+                float u = x / 127f, v = y / 63f;
+                float reflection = Mathf.Exp(-Mathf.Pow((u - v * 0.3f - 0.22f) * 11f, 2f));
+                pixels[y * 128 + x] = new Color(0.018f + reflection * 0.035f, 0.028f + reflection * 0.05f, 0.04f + reflection * 0.07f);
+            }
+            tex.SetPixels(pixels); tex.Apply(false, true);
+            var screen = Mat.Make("tvReflectedGlass", Color.white, tex, 0.8f);
+            screen.SetTexture("_EmissionMap", tex);
+            Mat.SetEmission(screen, new Color(0.35f, 0.4f, 0.5f));
+            QuadFacing("TV反射ガラス", new Vector3(0.256f, 0.78f, 3.7f), new Vector2(1.29f, 0.53f), Vector3.right, screen);
+            // 台の引出し、取手、テーブル上のコースターで暮らしのディテールを増やす。
+            for (int i = 0; i < 2; i++)
+            {
+                float z = 3.3f + i * 0.78f;
+                Geo.Box(root, "TV台引出し", new Vector3(0.508f, 0.25f, z), new Vector3(0.015f, 0.24f, 0.7f), woodLight, false);
+                Geo.Box(root, "TV台取手", new Vector3(0.527f, 0.29f, z), new Vector3(0.025f, 0.018f, 0.14f), metal, false);
+            }
+            Geo.Cyl(root, "コルクのコースター", new Vector3(2.1f, 0.407f, 3.4f), 0.075f, 0.008f, beige, false);
+        }
+
+        static void DetailedClock(string name, Vector3 position, Vector3 normal, float radius)
+        {
+            // 可動針は家の静的バッチから分離。目盛りは1枚の小さな共有テクスチャ。
+            var mount = new GameObject(name).transform;
+            mount.SetParent(propRoot, false);
+            mount.localPosition = position;
+            mount.localRotation = Quaternion.LookRotation(-normal, Vector3.up);
+            Geo.Cyl(mount, "木製時計枠", Vector3.zero, radius, 0.045f, woodDark, false).transform.localRotation = Quaternion.Euler(90, 0, 0);
+            var face = Mat.Make("clockIvoryDial", new Color(0.92f, 0.88f, 0.75f), null, 0.25f);
+            if (face.mainTexture == null)
+            {
+                var tex = new Texture2D(128, 128, TextureFormat.RGBA32, false);
+                tex.name = "時計の60分目盛り";
+                var pixels = new Color[128 * 128];
+                for (int y = 0; y < 128; y++) for (int x = 0; x < 128; x++)
+                {
+                    Vector2 d = new Vector2(x - 63.5f, y - 63.5f) / 64f;
+                    float angle = Mathf.Atan2(d.x, d.y) / (2f * Mathf.PI) * 60f;
+                    int tick = Mathf.RoundToInt(angle);
+                    bool hour = tick % 5 == 0;
+                    float inner = hour ? 0.72f : 0.83f;
+                    bool ink = d.magnitude > inner && d.magnitude < 0.93f && Mathf.Abs(angle - tick) < (hour ? 0.15f : 0.09f);
+                    pixels[y * 128 + x] = ink ? new Color(0.13f, 0.12f, 0.10f) : Color.white;
+                }
+                tex.SetPixels(pixels); tex.Apply(false, true); face.mainTexture = tex;
+            }
+            Geo.Cyl(mount, "乳白色の文字盤", new Vector3(0, 0, -0.026f), radius * 0.9f, 0.012f, face, false).transform.localRotation = Quaternion.Euler(90, 0, 0);
+            // Quadの正面は-Z。表面を立てて目盛りが正しく見えるようにする。
+            Geo.Quad(mount, "分目盛り", new Vector3(0, 0, -0.033f), Vector2.one * radius * 1.27f, Vector3.zero, face);
+            var hourPivot = new GameObject("時針軸").transform; hourPivot.SetParent(mount, false);
+            var minutePivot = new GameObject("分針軸").transform; minutePivot.SetParent(mount, false);
+            Geo.Box(hourPivot, "時針", new Vector3(0, radius * 0.22f, -0.044f), new Vector3(radius * 0.09f, radius * 0.52f, 0.009f), blackPl, false);
+            Geo.Box(minutePivot, "分針", new Vector3(0, radius * 0.34f, -0.052f), new Vector3(radius * 0.045f, radius * 0.76f, 0.008f), blackPl, false);
+            Geo.Sph(mount, "時計の中心金具", new Vector3(0, 0, -0.059f), Vector3.one * radius * 0.11f, metal);
+            var clock = mount.gameObject.AddComponent<InteriorClock>();
+            clock.hourHand = hourPivot; clock.minuteHand = minutePivot;
+        }
+
         static void BuildWashitsu()
         {
             // 押入れ
@@ -801,7 +938,10 @@ namespace MidnightCalico
             PropBox("黒電話", new Vector3(6.25f, 0.82f, 5.3f), new Vector3(0.2f, 0.1f, 0.22f), blackPl, 0.6f, false);
             // 柱時計
             Geo.BoxMM(root, "柱時計", 7.82f, 1.1f, 4.15f, 7.94f, 1.9f, 4.55f, woodDark, false);
-            Geo.Cyl(root, "文字盤", new Vector3(7.81f, 1.7f, 4.35f), 0.12f, 0.01f, ceramic, false).transform.rotation = Quaternion.Euler(0, 0, 90);
+            DetailedClock("柱時計の文字盤", new Vector3(7.80f, 1.7f, 4.35f), Vector3.left, 0.145f);
+            Geo.BoxMM(root, "柱時計の振子窓", 7.798f, 1.16f, 4.23f, 7.81f, 1.49f, 4.47f, blackPl, false);
+            Geo.Box(root, "真鍮の振子軸", new Vector3(7.785f, 1.37f, 4.35f), new Vector3(0.012f, 0.23f, 0.014f), metal, false);
+            Geo.Cyl(root, "真鍮の振子", new Vector3(7.775f, 1.24f, 4.35f), 0.06f, 0.012f, metal, false).transform.localRotation = Quaternion.Euler(0, 0, 90);
             // 突き当たりの小窓
             Window(new Vector3(7f, 1.5f, 14f), Vector3.back, 0.8f, 0.6f, false, true);
             // 照明（ちらつく）
@@ -847,7 +987,12 @@ namespace MidnightCalico
             var glassDoor = Mat.Make("cupGlass", new Color(0.12f, 0.14f, 0.16f), null, 0.95f, 0.3f);
             Geo.BoxMM(root, "ガラス戸", 15.43f, 1.0f, 2.08f, 15.45f, 1.82f, 4.12f, glassDoor, false);
             Geo.BoxMM(root, "下段の扉線", 15.43f, 0.1f, 3.09f, 15.45f, 0.9f, 3.11f, woodDark, false);
-            // ダイニングテーブル
+            PropBox("食器棚の缶", new Vector3(15.64f, 2.0f, 2.5f), new Vector3(0.15f,0.2f,0.15f), woodWhite, 0.25f, false);
+            PropCyl("食器棚のカップ", new Vector3(15.65f, 1.97f, 3.05f), 0.055f, 0.14f, ceramic, 0.2f, true);
+            PropBox("食器棚の小箱", new Vector3(15.65f, 2.0f, 3.7f), new Vector3(0.18f,0.2f,0.2f), woodLight, 0.3f, false);
+            // ダイニングテーブル。短辺の両側から潜れる（ローテーブルは低すぎるので対象外）。
+            h.shelters.Add(new TableShelter(new Vector3(9.95f, 0f, 3.2f), new Vector3(10.95f, 0f, 3.2f)));
+            h.shelters.Add(new TableShelter(new Vector3(13.05f, 0f, 3.2f), new Vector3(12.05f, 0f, 3.2f)));
             Geo.BoxMM(root, "ダイニングテーブル", 10.4f, 0.7f, 2.6f, 12.6f, 0.74f, 3.8f, woodLight);
             foreach (var lp in new[] { new Vector2(10.48f, 2.68f), new Vector2(12.52f, 2.68f), new Vector2(10.48f, 3.72f), new Vector2(12.52f, 3.72f) })
                 Geo.BoxMM(root, "脚", lp.x - 0.03f, 0f, lp.y - 0.03f, lp.x + 0.03f, 0.7f, lp.y + 0.03f, woodLight, false);

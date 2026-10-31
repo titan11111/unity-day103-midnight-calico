@@ -20,6 +20,8 @@ namespace MidnightCalico.EditorTools
         static Vector3 before, basisBefore;
         static float darkEmission;
         static bool initialLight;
+        static Prop fallingProbe;
+        static Vector3 fallingBefore;
         static int originalRun;
         static VirtualStick stick;
         static TouchButton run, light;
@@ -98,6 +100,7 @@ namespace MidnightCalico.EditorTools
                 try
                 {
                     if (cmd == "verify") Run();
+                    else if (cmd == "play" && !EditorApplication.isPlayingOrWillChangePlaymode) MidnightCalicoSetup.OpenAndPlay();
                     else if (cmd == "build" && !EditorApplication.isPlayingOrWillChangePlaymode) MidnightCalicoSetup.BuildWebGL();
                     else if (cmd == "preview" && !EditorApplication.isPlayingOrWillChangePlaymode) CharacterPreview.Render();
                 }
@@ -219,6 +222,73 @@ namespace MidnightCalico.EditorTools
                 else if (step == 11)
                 {
                     Require(gm.cat.model.EyeEmission<darkEmission*0.5f,"Cat eye reflection dims in a lit room");
+                    VerifyNightEvents(gm);
+                    VerifySwitchButtons();
+                    PrepareShelterTest(gm);
+                    step++; due = EditorApplication.timeSinceStartup + 2.5;
+                }
+                else if (step == 12)
+                {
+                    Require(fallingProbe != null && fallingProbe.transform.position.y < fallingBefore.y - 0.4f,"Shelf object actually falls under gravity during shelter entry");
+                    Require(gm.player.IsSheltered && gm.player.ProtectedFromDebris,"Player crawls physically under dining table");
+                    Require(gm.player.GetComponent<CharacterController>().height < 0.7f,"Crouched collision capsule fits below table top");
+                    int hp = gm.player.hp;
+                    SessionState.SetInt("mc.shelterHp",hp);
+                    gm.player.HitByFallingProp();
+                    Require(gm.player.hp == hp,"Table shelter prevents falling prop damage");
+                    before = gm.player.transform.position;
+                    gm.OpenPause();
+                    float remaining = gm.nightEvents.QuakeSecondsLeft;
+                    SessionState.SetFloat("mc.quakeRemaining",remaining);
+                    step++; due = EditorApplication.timeSinceStartup + 0.4;
+                }
+                else if (step == 13)
+                {
+                    Require(Mathf.Abs(gm.nightEvents.QuakeSecondsLeft - SessionState.GetFloat("mc.quakeRemaining",0)) < 0.01f,"Pause freezes earthquake countdown while sheltered");
+                    Require(Vector3.Distance(before,gm.player.transform.position) < 0.02f,"Pause preserves shelter position");
+                    gm.ClosePause();
+                    FixedCameraSystem.I.Shot(new Vector3(9.45f,1.0f,4.65f),new Vector3(11.15f,0.35f,3.2f));
+                    step++; due = EditorApplication.timeSinceStartup + 1.5;
+                }
+                else if (step == 14)
+                {
+                    ScreenCapture.CaptureScreenshot("Builds/ControlVerification/earthquake-shelter.png");
+                    gm.player.StartCoroutine(gm.player.LeaveShelter());
+                    step++; due = EditorApplication.timeSinceStartup + 2;
+                }
+                else if (step == 15)
+                {
+                    Require(!gm.player.IsSheltered && gm.player.GetComponent<CharacterController>().height > 1.6f,"Player crawls out and restores standing capsule");
+                    gm.player.HitByFallingProp();
+                    Require(gm.player.hp == Mathf.Max(1,SessionState.GetInt("mc.shelterHp",5)-1),"Exposed player takes falling prop damage");
+                    gm.newcomer.enabled=false;
+                    PlacePlayer(gm,new Vector3(7.33f,0.02f,5.4f),Quaternion.identity);
+                    gm.player.cameraRelative=false; GameInput.stick=Vector2.up;
+                    step++; due=EditorApplication.timeSinceStartup+5.5;
+                }
+                else if (step == 16)
+                {
+                    GameInput.ClearTouches();
+                    Require(gm.player.transform.position.y > 2.85f && gm.player.transform.position.z > 12.4f,"Player walks up all physical stair steps to second floor");
+                    Require(gm.house.RoomName(gm.player.transform.position)=="2階 踊り場","Room detection distinguishes upstairs landing");
+                    Require(FixedCameraSystem.I.current!=null && FixedCameraSystem.I.current.room=="2階 踊り場","Camera changes to upstairs landing on actual ascent");
+                    PlacePlayer(gm,new Vector3(7.33f,3.02f,13.05f),Quaternion.Euler(0,90,0));
+                    GameInput.stick=Vector2.up;
+                    step++; due=EditorApplication.timeSinceStartup+1.2;
+                }
+                else if (step == 17)
+                {
+                    GameInput.ClearTouches();
+                    Require(gm.house.RoomName(gm.player.transform.position)=="2階 書斎","Upstairs study is reachable through physical doorway");
+                    VerifyNewcomerAndFaces(gm);
+                    PlacePlayer(gm,new Vector3(7.33f,3.02f,12.7f),Quaternion.Euler(0,180,0));
+                    gm.player.cameraRelative=false; GameInput.stick=Vector2.up;
+                    step++; due=EditorApplication.timeSinceStartup+5.7;
+                }
+                else if (step == 18)
+                {
+                    GameInput.ClearTouches();
+                    Require(gm.player.transform.position.y < 0.2f && gm.player.transform.position.z < 5.8f,"Player walks back down stairs to ground floor without teleport");
                     WriteReport();
                     SessionState.SetBool("mc.controlsVerifying",false);
                     PlayerPrefs.SetInt("mc.runToggle",originalRun);
@@ -266,6 +336,136 @@ namespace MidnightCalico.EditorTools
                 gm.cat.state=catState;
                 Field(gm.player,"selectionFrame").SetValue(gm.player,-1);
             }
+        }
+        static void PlacePlayer(GameManager gm,Vector3 position,Quaternion rotation)
+        {
+            GameInput.ClearTouches();
+            var cc=gm.player.GetComponent<CharacterController>();cc.enabled=false;
+            gm.player.transform.SetPositionAndRotation(position,rotation);cc.enabled=true;
+            Physics.SyncTransforms(); FixedCameraSystem.I.CancelShot();
+        }
+        static void VerifyNewcomerAndFaces(GameManager gm)
+        {
+            Require(gm.newcomer!=null && gm.newcomer.model!=null,"Second timid cat exists with an independent model");
+            Require(CatAI.I==gm.cat && gm.newcomer.GetComponent<CatAI>()==null,"New cat does not overwrite original Mike singleton or capture objective");
+            Require(gm.newcomer.model.earsBack && gm.newcomer.Fear>0.45f,"Newcomer begins visibly frightened with ears back");
+            Require(gm.house.RoomName(gm.newcomer.transform.position)=="2階 書斎","Newcomer lives on actual upstairs floor");
+            PlacePlayer(gm,new Vector3(13.1f,3.02f,12.7f),Quaternion.Euler(0,90,0));
+            float fear=gm.newcomer.Fear;gm.newcomer.Soothe();
+            Require(gm.newcomer.Fear<fear,"Quietly watching newcomer reduces its fear");
+            PlacePlayer(gm,new Vector3(13.1f,0.02f,12.7f),Quaternion.identity);
+            Require(!gm.newcomer.InReach(gm.player),"New cat cannot be interacted with through floor below");
+            PlacePlayer(gm,new Vector3(12f,3.02f,10f),Quaternion.identity);
+            var model=gm.player.GetComponent<PlayerModel>();
+            Require(model.FaceMaterial!=null && model.FaceMaterial.shader.name=="MidnightCalico/NatsukiExpression" && !ShaderUtil.ShaderHasError(model.FaceMaterial.shader),"Expression shader is loaded and compiled without shader errors");
+            gm.player.hp=5;model.danger=false;model.sheltering=false;gm.caught=false;
+            Field(gm.nightEvents,"quakeEnd").SetValue(gm.nightEvents,0f);Field(model,"painUntil").SetValue(model,0f);
+            model.SendMessage("UpdateFace");
+            Require(model.CurrentExpression==PlayerModel.FaceExpression.Neutral,"Face is neutral in calm gameplay");
+            gm.nightEvents.TriggerQuake();model.SendMessage("UpdateFace");
+            Require(model.CurrentExpression==PlayerModel.FaceExpression.Scared,"Earthquake changes player face to frightened");
+            model.Flinch();model.SendMessage("UpdateFace");
+            Require(model.CurrentExpression==PlayerModel.FaceExpression.Hurt,"Impact changes player face to pain");
+            gm.caught=true;model.SendMessage("UpdateFace");
+            Require(model.CurrentExpression==PlayerModel.FaceExpression.Relieved,"Catching Mike changes player face to relief");
+            gm.caught=false;Field(model,"painUntil").SetValue(model,0f);
+            CaptureFacePreviews(gm,model);
+            FixedCameraSystem.I.Shot(new Vector3(15.2f,3.8f,13.5f),gm.newcomer.transform.position+Vector3.up*0.18f);
+        }
+        static void CaptureFacePreviews(GameManager gm,PlayerModel model)
+        {
+            var go=new GameObject("ExpressionPreviewCamera_TEMP");var lightGo=new GameObject("ExpressionPreviewLight_TEMP");
+            RenderTexture rt=null;Texture2D texture=null;
+            var previous=RenderTexture.active;
+            try
+            {
+                var light=lightGo.AddComponent<Light>();light.type=LightType.Point;light.range=3f;light.intensity=1.3f;
+                lightGo.transform.position=gm.player.transform.position+new Vector3(0.3f,1.8f,0.7f);
+                var cam=go.AddComponent<Camera>();cam.nearClipPlane=0.03f;cam.fieldOfView=36f;
+                cam.transform.position=gm.player.transform.position+new Vector3(0,1.68f,0.8f);
+                cam.transform.LookAt(gm.player.transform.position+new Vector3(0,1.6f,0));
+                rt=new RenderTexture(512,512,24);cam.targetTexture=rt;texture=new Texture2D(512,512,TextureFormat.RGB24,false);
+                string[] names={"neutral","scared","hurt","relieved"};
+                for(int i=0;i<4;i++)
+                {
+                    model.FaceMaterial.SetFloat("_Fear",i==1?1:0);model.FaceMaterial.SetFloat("_Pain",i==2?1:0);model.FaceMaterial.SetFloat("_Smile",i==3?1:0);model.FaceMaterial.SetFloat("_Blink",0);
+                    cam.Render();RenderTexture.active=rt;texture.ReadPixels(new Rect(0,0,512,512),0,0);texture.Apply();
+                    File.WriteAllBytes("Builds/ControlVerification/face-"+names[i]+".png",texture.EncodeToPNG());
+                }
+            }
+            finally {RenderTexture.active=previous;UnityEngine.Object.DestroyImmediate(go);UnityEngine.Object.DestroyImmediate(lightGo);if(rt!=null)UnityEngine.Object.DestroyImmediate(rt);if(texture!=null)UnityEngine.Object.DestroyImmediate(texture);}
+        }
+        static void PrepareShelterTest(GameManager gm)
+        {
+            Require(NightEvents.QuakeDuration == 20f && gm.nightEvents.QuakeSecondsLeft > 19f,"Earthquake lasts twenty seconds instead of five");
+            Require(gm.house.shelters.Count == 2,"Dining table has entrances at both short ends");
+            var cover = gm.house.shelters[0];
+            var cc = gm.player.GetComponent<CharacterController>();
+            cc.enabled=false; gm.player.transform.position=cover.entrance; cc.enabled=true;
+            gm.player.transform.rotation=Quaternion.LookRotation(cover.inside-cover.entrance);
+            Physics.SyncTransforms();
+            Field(gm.player,"selectionFrame").SetValue(gm.player,-1);
+            Require(gm.player.Selection.kind == PlayerController.TargetKind.Shelter,"Earthquake exposes shelter as investigate action");
+            int count = gm.damage;
+            Require(gm.nightEvents.DropQuakeProps() == 1 && gm.damage > count,"Earthquake pushes elevated kitchen prop off its support and records damage");
+            fallingProbe = Prop.all.First(x => x.IsEarthquakeFall && x.transform.position.y > 1.4f);
+            fallingBefore = fallingProbe.transform.position;
+            gm.player.SendMessage("DoAction");
+            Require(gm.player.IsSheltered,"Investigate action begins shelter entry");
+        }
+        static void VerifyNightEvents(GameManager gm)
+        {
+            var events = gm.nightEvents;
+            Require(events != null, "Night incidents are created with the real house");
+            var stove = gm.house.searches.First(x => x.name == "コンロ");
+            gm.state = GState.Pause;
+            events.TriggerQuake();
+            Require(events.QuakeStrength == 0f, "Pause blocks earthquake triggers");
+            gm.state = GState.Play;
+            gm.cat.state = CatState.Idle;
+            Require(gm.cat.VisitStove(), "Calm cat accepts a graph route to stove");
+            Require(gm.cat.state == CatState.Stove, "Stove visit is a dedicated cat action");
+            gm.cat.transform.position = gm.house.catSpawn;
+            events.IgniteFromCat(gm.cat);
+            Require(!events.StoveOn, "Timer or distant cat cannot ignite stove");
+            gm.cat.transform.position = new Vector3(14.35f,0.92f,0.65f);
+            events.IgniteFromCat(gm.cat);
+            Require(events.StoveOn && stove.name.Contains("消火"), "Cat touching switch ignites visible stove and labels extinguish action");
+            Require(!events.TryExtinguish(new SearchPoint("棚",Vector3.zero,ItemId.None,0,"test")) && events.StoveOn, "Other search targets cannot extinguish stove");
+            gm.DoSearch(stove);
+            Require(!events.StoveOn && gm.state == GState.Play && stove.name == "コンロ", "Real investigate action extinguishes stove without opening a stale message");
+            events.TriggerQuake();
+            Require(events.QuakeStrength > 0f && gm.cat.state == CatState.Flee, "Earthquake starts camera shake and cat escape");
+            gm.cat.state = CatState.Caught;
+            Require(!gm.cat.VisitStove(), "Caught cat cannot start a stove visit");
+        }
+        static void VerifySwitchButtons()
+        {
+#if ENABLE_INPUT_SYSTEM
+            var flags = BindingFlags.NonPublic | BindingFlags.Static;
+            var type = typeof(GameInput);
+            var active = type.GetField("activePad",flags);
+            var frame = type.GetField("padFrame",flags);
+            var previous = active.GetValue(null);
+            UnityEngine.InputSystem.Gamepad pad = null;
+            try
+            {
+                UnityEngine.InputSystem.InputSystem.RegisterLayout("{\"name\":\"SwitchVerificationPad\",\"extend\":\"Gamepad\"}");
+                pad = (UnityEngine.InputSystem.Gamepad)UnityEngine.InputSystem.InputSystem.AddDevice("SwitchVerificationPad");
+                active.SetValue(null,pad); frame.SetValue(null,Time.frameCount);
+                Require(GameInput.IsSwitchPad,"Switch layout is recognized");
+                Require(ReferenceEquals(type.GetMethod("InvestigateButton",flags).Invoke(null,new object[]{pad}),pad.buttonEast),"Switch printed A/right investigates and confirms");
+                Require(ReferenceEquals(type.GetMethod("ToolButton",flags).Invoke(null,new object[]{pad}),pad.buttonSouth),"Switch printed B/bottom uses tool");
+                Require(ReferenceEquals(type.GetMethod("LightButton",flags).Invoke(null,new object[]{pad}),pad.buttonWest),"Switch printed Y/left toggles flashlight");
+            }
+            finally
+            {
+                active.SetValue(null,null);
+                if(pad != null) UnityEngine.InputSystem.InputSystem.RemoveDevice(pad);
+                UnityEngine.InputSystem.InputSystem.RemoveLayout("SwitchVerificationPad");
+                active.SetValue(null,previous); frame.SetValue(null,-1);
+            }
+#endif
         }
         [Serializable] class Report { public string checkedAtUtc; public string result; public string error; public string[] checks; }
         static void WriteReport()

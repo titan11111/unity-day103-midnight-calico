@@ -10,6 +10,7 @@ namespace MidnightCalico
     public class FilmLook : MonoBehaviour
     {
         public static bool enabledByUser = true;
+        public static float Brightness { get { return PlayerPrefs.GetFloat("mc.brightness", Application.isMobilePlatform ? 1.2f : 1f); } }
         Material mat;
         bool tried;
 
@@ -26,12 +27,12 @@ namespace MidnightCalico
                 Graphics.Blit(src, dst);
                 return;
             }
-            mat.SetFloat("_Grain", 0.07f);
+            mat.SetFloat("_Grain", 0.035f);
             mat.SetFloat("_Seed", Random.value * 100f);
             mat.SetFloat("_CA", 0.018f);
             mat.SetFloat("_Sat", 0.8f);
-            mat.SetFloat("_Contrast", 1.1f);
-            mat.SetFloat("_Exposure", 1.12f);
+            mat.SetFloat("_Contrast", 1.02f);
+            mat.SetFloat("_Exposure", 1.22f * Mathf.Sqrt(Brightness));
             mat.SetColor("_ShadowTint", new Color(0.86f, 0.97f, 1.06f));
             mat.SetColor("_LightTint", new Color(1.06f, 1.0f, 0.9f));
             Graphics.Blit(src, dst, mat);

@@ -30,13 +30,16 @@ namespace MidnightCalico
         public float glowTarget;     // 懐中電灯で目が光る量
         public bool puffed;          // しっぽが太くなる（驚き）
         public bool earsBack;        // 耳を伏せる（怖い・怒り）
+        public float fear;
+        public bool megaPurr;        // カリカリを食べて「めっちゃゴロゴロ」中（喉の振動を体の揺れで表現）
 
-        public void Build()
+        public void Build(bool newcomer = false)
         {
-            var fur = Mat.WithNormal(Mat.Make("calicoFur", Color.white, Tex.Calico(), 0.12f, 0f, 1f, 1f), 3.5f);   // 毛並みの凹凸
+            var fur = newcomer ? Mat.WithNormal(Mat.Make("newCatFur",Color.white,Tex.Fabric(new Color(0.42f,0.48f,0.55f),0.18f),0.12f),3.5f) : Mat.WithNormal(Mat.Make("calicoFur", Color.white, Tex.Calico(), 0.12f, 0f, 1f, 1f), 3.5f);   // 毛並みの凹凸
             var white = Mat.Make("catWhite", new Color(0.95f, 0.94f, 0.9f), null, 0.08f);
             var black = Mat.Make("catBlack", new Color(0.09f, 0.08f, 0.07f), null, 0.1f);
             var orange = Mat.Make("catOrange", new Color(0.85f, 0.5f, 0.2f), null, 0.08f);
+            if(newcomer) orange = Mat.Make("newCatGrey",new Color(0.42f,0.48f,0.55f),null,0.08f);
             var pink = Mat.Make("catPink", new Color(0.92f, 0.6f, 0.62f), null, 0.4f);
             eyeMat = new Material(Mat.Make("catEyeBase", new Color(0.75f, 0.78f, 0.25f), null, 0.95f));
             eyeMat.name = "catEye";
@@ -221,6 +224,7 @@ namespace MidnightCalico
                 case CatPose.Held:
                     bPos.y = 0.0f; bRot.x = -60f; break;
             }
+            if(fear > 0.1f) bPos.x += Mathf.Sin(tailT*37f) * 0.0025f * fear;
             body.localPosition = Vector3.Lerp(body.localPosition, bPos, 1f - Mathf.Exp(-dt * 10f));
             body.localRotation = Quaternion.Slerp(body.localRotation, Quaternion.Euler(bRot), 1f - Mathf.Exp(-dt * 8f));
 
@@ -261,8 +265,10 @@ namespace MidnightCalico
             earR.localRotation = Quaternion.Slerp(earR.localRotation, Quaternion.Euler(back * 25f, earTwitchR * 35f + back * 40f, 12f + back * 55f - earTwitchR * 10f), 1f - Mathf.Exp(-dt * 14f));
 
             // 呼吸（止まっている時ほど見える）
-            breathT += dt * (moving ? 3.2f : 1.7f) * (pose == CatPose.Hide ? 1.6f : 1f);
+            breathT += dt * (moving ? 3.2f : 1.7f) * (pose == CatPose.Hide ? 1.6f : 1f) * (megaPurr ? 2.2f : 1f);
             float br = Mathf.Sin(breathT) * (moving ? 0.01f : 0.025f);
+            // 「めっちゃゴロゴロ」中は喉の振動を小刻みな揺れで重ねる
+            if (megaPurr) br += Mathf.Sin(Time.time * 42f) * 0.012f;
             chest.localScale = new Vector3(1f + br, 1f + br, 1f);
             // 首をかしげる（警戒・興味）
             float tiltTarget = (pose == CatPose.Crouch || pose == CatPose.Play) && !moving ? Mathf.Sin(tailT * 0.6f) * 14f : 0f;
@@ -277,6 +283,7 @@ namespace MidnightCalico
             else if (pose == CatPose.Hide || pose == CatPose.Crouch) { baseUp = -15f; sway = 35f; curl = 6f; }
             else if (pose == CatPose.Play) { baseUp = 10f; sway = 45f; curl = 6f; }
             else { baseUp = 55f; sway = 12f; curl = -14f; }
+            if(fear > 0.1f) { baseUp = -65f; curl = 22f; sway = 3f; }
             float swaySpeed = pose == CatPose.Play || pose == CatPose.Hide ? 6f : 1.8f;
             for (int i = 0; i < tail.Count; i++)
             {

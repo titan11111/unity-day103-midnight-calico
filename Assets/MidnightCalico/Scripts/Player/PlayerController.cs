@@ -19,6 +19,10 @@ namespace MidnightCalico
         Light flash;
         float vy;
         float stepDist;
+        TableShelter shelter;
+        bool shelterTransition;
+        public bool IsSheltered { get { return shelter != null; } }
+        public bool ProtectedFromDebris { get { return IsSheltered && transform.position.x > 10.45f && transform.position.x < 12.55f && transform.position.z > 2.65f && transform.position.z < 3.75f; } }
         bool busy;            // 捕獲・調べる中は動けない
         float hurtT;
         Vector3 heldCamFwd = Vector3.forward;
@@ -99,7 +103,15 @@ namespace MidnightCalico
             IsRunning = false;
             IsSneaking = false;
 
-            if (gm.state == GState.Play && !busy)
+            if (gm.state == GState.Play && IsSheltered)
+            {
+                if (!shelterTransition && Time.frameCount > gm.resumeFrame + 1)
+                {
+                    if (GameInput.Pressed(GameInput.Action)) StartCoroutine(LeaveShelter());
+                    else if (GameInput.Pressed(GameInput.Torch)) UseItem(ItemId.Flashlight);
+                }
+            }
+            else if (gm.state == GState.Play && !busy)
             {
                 if (GameInput.SchemeToggle)
                 {
@@ -121,6 +133,7 @@ namespace MidnightCalico
 
             model.moveSpeed = IsMoving ? (IsRunning ? 2f : (backward ? -1f : 1f)) : 0f;
             model.danger = hp <= 1;
+            model.toyEquipped = gm.inv.equipped == ItemId.Toy;
         }
 
         bool backward;
@@ -214,13 +227,14 @@ namespace MidnightCalico
         }
 
         // ───────────────────────── 調べる・捕まえる・電気をつける ─────────────────────────
-        public enum TargetKind { None, Cat, Search, Switch }
+        public enum TargetKind { None, Cat, Search, Switch, Shelter, NewCat }
 
         public struct TargetSelection
         {
             public TargetKind kind;
             public SearchPoint search;
             public LightSwitch lightSwitch;
+            public TableShelter shelter;
             public Vector3 position;
             public string name;
         }
@@ -241,7 +255,7 @@ namespace MidnightCalico
         bool CatInReach()
         {
             var cat = CatAI.I;
-            if (cat == null || cat.state == CatState.Caught) return false;
+            if (cat == null || cat.state == CatState.Caught || Mathf.Abs(cat.transform.position.y-transform.position.y)>1.5f) return false;
             if (cat.IsCatchTarget(transform.position, transform.forward, 1.35f)) return true;
             return cat.state == CatState.Hidden && cat.spot != null &&
                 InReach(cat.spot.approach, 1.1f) && InReach(cat.transform.position, 1.8f);
@@ -252,9 +266,35 @@ namespace MidnightCalico
             selectionFrame = Time.frameCount;
             var previous = selected;
             selected = default(TargetSelection);
+            if (IsSheltered)
+            {
+                selected = new TargetSelection { kind = TargetKind.Shelter, shelter = shelter, name = "テーブルの下", position = transform.position + Vector3.up * 0.4f };
+                return;
+            }
+            var events = GameManager.I != null ? GameManager.I.nightEvents : null;
+            if (events != null && events.Quaking)
+            {
+                TableShelter nearest = null; float distance = 0.9f;
+                foreach (var cover in house.shelters)
+                {
+                    float d = Vector3.Distance(new Vector3(transform.position.x,0,transform.position.z), cover.entrance);
+                    if (d < distance && InReach(cover.entrance,0.9f)) { distance = d; nearest = cover; }
+                }
+                if (nearest != null)
+                {
+                    selected = new TargetSelection { kind = TargetKind.Shelter, shelter = nearest, name = "ダイニングテーブル", position = nearest.entrance + Vector3.up * 0.5f };
+                    return;
+                }
+            }
             if (CatInReach())
             {
                 selected = new TargetSelection { kind = TargetKind.Cat, name = "ミケ", position = CatAI.I.transform.position + Vector3.up * 0.35f };
+                return;
+            }
+            var newcomer = GameManager.I != null ? GameManager.I.newcomer : null;
+            if (newcomer != null && newcomer.InReach(this) && InReach(newcomer.transform.position,1.5f))
+            {
+                selected = new TargetSelection { kind=TargetKind.NewCat, name="新入り猫",position=newcomer.transform.position+Vector3.up*0.25f };
                 return;
             }
             float best = float.MaxValue;
@@ -298,7 +338,11 @@ namespace MidnightCalico
         {
             var target = GameInput.lastActionWasTouch && Time.unscaledTime - touchTargetAt < 0.16f ? touchTarget : Selection;
             touchTargetAt = -99f;
-            if (target.kind == TargetKind.Cat && CatInReach())
+            if (target.kind == TargetKind.NewCat && GameManager.I.newcomer != null)
+                GameManager.I.newcomer.Soothe();
+            else if (target.kind == TargetKind.Shelter && target.shelter != null)
+                TryEnterShelter(target.shelter);
+            else if (target.kind == TargetKind.Cat && CatInReach())
             {
                 GameInput.StopRunning();
                 Vector3 d = CatAI.I.transform.position - transform.position; d.y = 0;
@@ -310,6 +354,81 @@ namespace MidnightCalico
                 GameManager.I.DoSearch(target.search);
             else if (target.kind == TargetKind.Switch && target.lightSwitch != null && InReach(target.lightSwitch.pos, target.lightSwitch.radius))
                 ToggleSwitch(target.lightSwitch);
+        }
+
+        public bool TryEnterShelter(TableShelter cover)
+        {
+            var gm = GameManager.I;
+            if (cover == null || gm == null || gm.state != GState.Play || gm.caught || busy || IsSheltered ||
+                gm.nightEvents == null || !gm.nightEvents.Quaking || !house.shelters.Contains(cover)) return false;
+            Vector3 delta = cover.entrance - transform.position; delta.y = 0f;
+            if (delta.magnitude > 0.95f) return false;
+            shelter = cover;
+            busy = shelterTransition = true;
+            cc.height = 0.5f; cc.center = new Vector3(0,0.25f,0); cc.stepOffset = 0.1f;
+            model.sheltering = true;
+            GameInput.ClearTouches();
+            StartCoroutine(EnterShelter());
+            return true;
+        }
+        IEnumerator EnterShelter()
+        {
+            // 先に頭を下げてから、短辺の入口を経由して天板の下へ入る。
+            float crouch = 0f;
+            while (crouch < 0.3f) { if (GameManager.I.state == GState.Play) crouch += Time.deltaTime; yield return null; }
+            yield return CrawlTo(shelter.entrance);
+            yield return CrawlTo(shelter.inside);
+            shelterTransition = false;
+            GameManager.I.Toast("テーブルの下で頭を守っている。A／調べるで外へ出る。");
+        }
+        IEnumerator CrawlTo(Vector3 target)
+        {
+            float time = 0f;
+            while (Vector2.Distance(new Vector2(transform.position.x,transform.position.z),new Vector2(target.x,target.z)) > 0.04f && time < 3f)
+            {
+                if (GameManager.I.state == GState.Play)
+                {
+                    float dt = Time.deltaTime; time += dt;
+                    Vector3 to = target - transform.position; to.y = 0f;
+                    if(to.sqrMagnitude > 0.001f) transform.rotation = Quaternion.LookRotation(to);
+                    cc.Move(Vector3.ClampMagnitude(to,1.6f * dt));
+                }
+                yield return null;
+            }
+        }
+        public IEnumerator LeaveShelter()
+        {
+            if (!IsSheltered || shelterTransition) yield break;
+            shelterTransition = true;
+            yield return CrawlTo(shelter.entrance);
+            Vector3 p = transform.position;
+            bool clear = !Physics.CheckCapsule(p + Vector3.up * 0.27f,p + Vector3.up * 1.35f,0.24f,~(1<<2),QueryTriggerInteraction.Ignore);
+            if (!clear || Vector3.Distance(new Vector3(p.x,0,p.z),shelter.entrance) > 0.15f)
+            {
+                shelterTransition = false;
+                GameManager.I.Toast("出口がふさがっている。もう一度A／調べるで出よう。");
+                yield break;
+            }
+            shelter = null; shelterTransition = busy = false; model.sheltering = false;
+            cc.height = 1.62f; cc.center = new Vector3(0,0.81f,0); cc.stepOffset = 0.3f;
+            GameInput.ClearTouches();
+            GameManager.I.resumeFrame = Time.frameCount;
+            GameManager.I.Toast("テーブルの外へ出た。");
+        }
+        public void HitByFallingProp()
+        {
+            var gm = GameManager.I;
+            if (gm == null || gm.state != GState.Play || ProtectedFromDebris || hurtT > 0f) return;
+            hurtT = 2f; hp = Mathf.Max(1,hp-1);
+            model.Flinch(); gm.FlashRed();
+            if (AudioMan.I != null) AudioMan.I.Play2D(Sfx.Thud,0.7f);
+            gm.Toast("いたっ、落下物が当たった！ テーブルの下で身を守ろう。");
+        }
+        void OnControllerColliderHit(ControllerColliderHit hit)
+        {
+            var prop = hit.collider.GetComponent<Prop>();
+            var rb = hit.collider.attachedRigidbody;
+            if (prop != null && prop.IsEarthquakeFall && rb != null && rb.linearVelocity.magnitude > 1.2f) HitByFallingProp();
         }
 
         void ToggleSwitch(LightSwitch sw)
@@ -331,8 +450,8 @@ namespace MidnightCalico
             var r = CatAI.I.TryCatch(gm.inv.Has(ItemId.Net), out msg);
             if (r == CatchResult.Success)
             {
-                model.Hold();
-                CatAI.I.AttachTo(model.carry);
+                model.PickUp();
+                CatAI.I.AttachTo(model.carryRear, model.carryFront);
                 gm.OnCatCaught();
                 yield break;
             }
@@ -447,13 +566,25 @@ namespace MidnightCalico
     public class PlayerModel : MonoBehaviour
     {
         Transform hips, spine, neck, armL, armR, foreL, foreR, legL, legR, shinL, shinR;
+        public enum FaceExpression { Neutral, Scared, Hurt, Relieved }
+        public FaceExpression CurrentExpression { get; private set; }
+        public Material FaceMaterial { get { return expressionMaterial; } }
+        Material expressionMaterial;
+        float faceFear, faceSmile, facePain, painUntil, blinkTimer=3f;
         public Transform carry;
+        public Transform carryRear;   // 右手＝お尻を下から支える
+        public Transform carryFront;  // 左手＝脇（胸側）を支える
         public Transform torchAim { get; private set; }
+        GameObject toyObj;
+        Transform toyTuft;
+        float toySwayT;
         public float moveSpeed;   // 2=走る 1=歩く -1=後退
         public bool danger;
         public bool sneaking;
+        public bool sheltering;
+        public bool toyEquipped;  // 猫じゃらしを装備中か
         float phase, actionT;
-        enum Act { None, Lunge, Wave, Flinch, Crouch, Hold }
+        enum Act { None, Lunge, Wave, Flinch, Crouch, Hold, PickUp }
         Act act;
 
         public void Build()
@@ -486,7 +617,11 @@ namespace MidnightCalico
             for(int i=0;i<4;i++) Geo.Sph(spine,"cardiganButton",new Vector3(0.058f,0.08f+i*0.09f,0.139f),new Vector3(0.012f,0.012f,0.005f),dark);
             neck=Geo.Pivot(spine,"neck",new Vector3(0,0.51f,0));
             Geo.Cyl(neck,"neckMesh",new Vector3(0,0.025f,0),0.042f,0.105f,skin,false);
-            var faceMat=Mat.Make("natsukiFace",Color.white,Resources.Load<Texture2D>("NatsukiFace"),0.15f);
+            var faceShader=Resources.Load<Shader>("NatsukiExpression");
+            var faceMat=faceShader != null ? new Material(faceShader) : new Material(Shader.Find("Standard"));
+            faceMat.name="NatsukiFaceExpression";
+            faceMat.mainTexture=Resources.Load<Texture2D>("NatsukiFace");
+            expressionMaterial=faceMat;
             Profile(neck,"face",new Vector3(0,0.035f,0.008f),faceMat,
                 new Vector4(0,0.036f,0.049f,0.016f),new Vector4(0.032f,0.060f,0.070f,0.012f),
                 new Vector4(0.075f,0.080f,0.083f,0.002f),new Vector4(0.13f,0.088f,0.090f,0),
@@ -506,8 +641,30 @@ namespace MidnightCalico
             var torch = Geo.Cyl(torchAim, "torch", new Vector3(0, 0, -0.1f), 0.022f, 0.2f, torchMat, false);
             torch.transform.localRotation = Quaternion.Euler(90, 0, 0);
             var lensG = Geo.Cyl(torchAim, "lens", Vector3.zero, 0.026f, 0.01f, lens, false);
+            // 猫じゃらし（左手、装備中のみ表示）
+            var toyStick = Mat.Make("toyStick", new Color(0.62f, 0.42f, 0.22f), null, 0.3f);
+            var toyTuftMat = Mat.Make("toyTuft", new Color(0.92f, 0.65f, 0.18f), null, 0.15f);
+            var toyAim = Geo.Pivot(handL, "toyAim", new Vector3(0.01f, -0.03f, 0.03f));
+            toyAim.localRotation = Quaternion.Euler(70f, 0f, 20f);
+            Geo.Cyl(toyAim, "toyStick", new Vector3(0, 0.23f, 0), 0.009f, 0.46f, toyStick, false);
+            toyTuft = Geo.Pivot(toyAim, "toyTuftRoot", new Vector3(0, 0.46f, 0));
+            Geo.Sph(toyTuft, "toyTuftCore", Vector3.zero, new Vector3(0.028f, 0.028f, 0.028f), toyTuftMat);
+            for (int f = 0; f < 5; f++)
+            {
+                float ang = f / 5f * 360f;
+                var feather = Geo.Sph(toyTuft, "toyFeather",
+                    new Vector3(Mathf.Sin(ang * Mathf.Deg2Rad) * 0.018f, 0.02f, Mathf.Cos(ang * Mathf.Deg2Rad) * 0.018f),
+                    new Vector3(0.012f, 0.05f, 0.012f), toyTuftMat);
+                feather.transform.localRotation = Quaternion.Euler(Random.Range(-15f, 15f), ang, Random.Range(10f, 25f));
+            }
+            toyObj = toyAim.gameObject;
+            toyObj.SetActive(false);
             lensG.transform.localRotation = Quaternion.Euler(90, 0, 0);
             carry = Geo.Pivot(spine, "carry", new Vector3(0, 0.25f, 0.3f));
+            // 猫の抱え方：利き手（右）でお尻を下から支え、左手で脇（胸側）を支える。
+            // この2点の中間に猫の胴の中心を置き、haunch(-Z側)がcarryRear寄り・chest(+Z側)がcarryFront寄りになるようにする。
+            carryRear = Geo.Pivot(spine, "carryRear", new Vector3(0.09f, 0.16f, 0.32f));
+            carryFront = Geo.Pivot(spine, "carryFront", new Vector3(-0.07f, 0.30f, 0.29f));
 
             legL = Geo.Pivot(hips, "legL", new Vector3(-0.09f, -0.03f, 0));
             legR = Geo.Pivot(hips, "legR", new Vector3(0.09f, -0.03f, 0));
@@ -557,9 +714,10 @@ namespace MidnightCalico
 
         public void Lunge() { act = Act.Lunge; actionT = 0f; }
         public void Wave() { act = Act.Wave; actionT = 0f; }
-        public void Flinch() { act = Act.Flinch; actionT = 0f; }
+        public void Flinch() { act = Act.Flinch; actionT = 0f; painUntil=Time.time+1.4f; }
         public void Crouch() { act = Act.Crouch; actionT = 0f; }
         public void Hold() { act = Act.Hold; actionT = 0f; }
+        public void PickUp() { act = Act.PickUp; actionT = 0f; }
 
         // Cross-sections create a continuous silhouette rather than stacked primitives.
         static void Profile(Transform parent,string name,Vector3 offset,Material material,params Vector4[] rings)
@@ -608,9 +766,30 @@ namespace MidnightCalico
             var go=new GameObject("bobHair");go.transform.SetParent(parent,false);go.AddComponent<MeshFilter>().sharedMesh=mesh;go.AddComponent<MeshRenderer>().sharedMaterial=material;
         }
 
+        void UpdateFace()
+        {
+            var gm=GameManager.I;
+            bool caught=gm!=null && gm.caught;
+            bool scared=sheltering || danger || (gm!=null && gm.nightEvents!=null && gm.nightEvents.Quaking);
+            CurrentExpression=caught?FaceExpression.Relieved:Time.time<painUntil?FaceExpression.Hurt:scared?FaceExpression.Scared:FaceExpression.Neutral;
+            float blend=1f-Mathf.Exp(-Time.deltaTime*9f);
+            faceFear=Mathf.Lerp(faceFear,CurrentExpression==FaceExpression.Scared?1f:0f,blend);
+            faceSmile=Mathf.Lerp(faceSmile,CurrentExpression==FaceExpression.Relieved?1f:0f,blend);
+            facePain=Mathf.Lerp(facePain,CurrentExpression==FaceExpression.Hurt?1f:0f,blend);
+            blinkTimer-=Time.deltaTime;
+            if(blinkTimer<=0f) blinkTimer=Random.Range(3f,6f);
+            if(expressionMaterial==null || !expressionMaterial.HasProperty("_Fear")) return;
+            expressionMaterial.SetFloat("_Fear",faceFear);
+            expressionMaterial.SetFloat("_Smile",faceSmile);
+            expressionMaterial.SetFloat("_Pain",facePain);
+            expressionMaterial.SetFloat("_Blink",blinkTimer<0.16f?Mathf.Sin(blinkTimer/0.16f*Mathf.PI):0f);
+        }
+        void OnDestroy() { if(expressionMaterial!=null) Destroy(expressionMaterial); }
+
         void LateUpdate()
         {
             if (hips == null) return;
+            UpdateFace();
             float dt = Time.deltaTime;
             actionT += dt;
             float spd = Mathf.Abs(moveSpeed);
@@ -679,14 +858,39 @@ namespace MidnightCalico
                     }
                     break;
                 case Act.Hold:
-                    armLRot = Quaternion.Euler(-55f, 25f, 10f);
-                    armRRot = Quaternion.Euler(-55f, -25f, -10f);
-                    foreLRot = Quaternion.Euler(-60f, 0, 0);
-                    foreRRot = Quaternion.Euler(-60f, 0, 0);
-                    spineRot = Quaternion.Euler(-4f + breathe, 0, 0);
+                    // 右（利き手）＝猫のお尻を下から支える。左＝脇（胸側）を支える。
+                    armRRot = Quaternion.Euler(-70f, -15f, -10f);
+                    armLRot = Quaternion.Euler(-65f, 20f, 15f);
+                    foreRRot = Quaternion.Euler(-55f, 0, 0);
+                    foreLRot = Quaternion.Euler(-55f, 0, 0);
+                    spineRot = Quaternion.Euler(5f + breathe, 0, 0);
+                    break;
+                case Act.PickUp:
+                    {
+                        // しゃがむ→両手を差し込む→持ち上げる（約1.0秒）
+                        float t = Mathf.Clamp01(actionT / 1.0f);
+                        float crouchK = Mathf.Sin(Mathf.Clamp01(actionT / 0.6f) * Mathf.PI);
+                        float liftK = Mathf.Clamp01((t - 0.3f) / 0.7f);
+                        spineRot = Quaternion.Euler(10f + 40f * crouchK - 5f * liftK, 0, 0);
+                        hipY -= 0.28f * crouchK;
+                        armRRot = Quaternion.Euler(Mathf.Lerp(-20f, -70f, liftK), Mathf.Lerp(0f, -15f, liftK), Mathf.Lerp(0f, -10f, liftK));
+                        armLRot = Quaternion.Euler(Mathf.Lerp(-10f, -65f, liftK), Mathf.Lerp(0f, 20f, liftK), Mathf.Lerp(0f, 15f, liftK));
+                        foreRRot = Quaternion.Euler(Mathf.Lerp(-10f, -55f, liftK), 0, 0);
+                        foreLRot = Quaternion.Euler(Mathf.Lerp(-10f, -55f, liftK), 0, 0);
+                        if (actionT > 1.0f) { act = Act.Hold; actionT = 0f; }
+                    }
                     break;
             }
 
+            if (sheltering)
+            {
+                hipY = 0.25f;
+                spineRot = Quaternion.Euler(72f,0f,0f);
+                neckRot = Quaternion.Euler(15f,0f,0f);
+                legLA = legRA = -75f; kneeL = kneeR = 135f;
+                armLRot = Quaternion.Euler(-125f,0f,15f); armRRot = Quaternion.Euler(-125f,0f,-15f);
+                foreLRot = foreRRot = Quaternion.Euler(-110f,0f,0f);
+            }
             float l = 1f - Mathf.Exp(-dt * 14f);
             hips.localPosition = Vector3.Lerp(hips.localPosition, new Vector3(0, hipY, 0), l);
             spine.localRotation = Quaternion.Slerp(spine.localRotation, spineRot, l);
@@ -699,6 +903,16 @@ namespace MidnightCalico
             legR.localRotation = Quaternion.Slerp(legR.localRotation, Quaternion.Euler(-legRA - limp * 5f, 0, 0), l);
             shinL.localRotation = Quaternion.Slerp(shinL.localRotation, Quaternion.Euler(kneeL, 0, 0), l);
             shinR.localRotation = Quaternion.Slerp(shinR.localRotation, Quaternion.Euler(kneeR + limp * 15f, 0, 0), l);
+
+            // 猫じゃらしの先端の揺れ（バネ関節を使わず、腕の動きに追従する簡易ゆれ）
+            if (toyObj != null && toyObj.activeSelf != toyEquipped) toyObj.SetActive(toyEquipped);
+            if (toyTuft != null && toyEquipped)
+            {
+                bool waving = act == Act.Wave;
+                toySwayT += dt * (waving ? 10f : 3f);
+                float sway = Mathf.Sin(toySwayT) * (waving ? 22f : 6f);
+                toyTuft.localRotation = Quaternion.Slerp(toyTuft.localRotation, Quaternion.Euler(sway, 0, sway * 0.6f), 1f - Mathf.Exp(-dt * 10f));
+            }
         }
     }
 }

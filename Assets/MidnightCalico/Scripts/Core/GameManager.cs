@@ -8,6 +8,14 @@ namespace MidnightCalico
 {
     public enum GState { Title, Intro, Play, Message, Inventory, Pause, Ending }
 
+    /// <summary>リザルトの「おうちの被害レポート」1件分（撮影した写真・部屋名・被害にあった物）</summary>
+    public class DamageEvent
+    {
+        public Texture2D photo;
+        public string room;
+        public string propName;
+    }
+
     /// <summary>
     /// ゲーム全体の進行。シーンに置くのはこれ1つだけで、家・猫・主人公・UIをすべて生成する。
     /// </summary>
@@ -20,12 +28,16 @@ namespace MidnightCalico
         public Inventory inv = new Inventory();
         public PlayerController player;
         public CatAI cat;
+        public TimidCat newcomer;
         public UIManager ui;
+        public NightEvents nightEvents;
 
         public float elapsed;
         public const float GameLength = 900f;   // 15分で 午前2時→午前6時
         public int damage;
         public int scratches;
+        public readonly List<DamageEvent> damageEvents = new List<DamageEvent>();
+        const int MaxDamageShots = 8;
         public bool caught;
         public bool showDebug;
         public int resumeFrame;   // 画面を閉じたフレームは操作を受け付けない（同じキーで再度開かないように）
@@ -50,9 +62,7 @@ namespace MidnightCalico
             // 天井側はやや青く、床側は暗く（夜の室内の回り込み光）
             // 懐中電灯の外側も真っ暗にはせず、輪郭だけ薄ぼんやり見える明るさまで持ち上げている（2026-10-29 調整）
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.15f, 0.17f, 0.22f);
-            RenderSettings.ambientEquatorColor = new Color(0.13f, 0.13f, 0.15f);
-            RenderSettings.ambientGroundColor = new Color(0.075f, 0.07f, 0.065f);
+            ApplyVisibility();
             if (Application.isMobilePlatform)
             {
                 QualitySettings.antiAliasing = 0;
@@ -86,6 +96,10 @@ namespace MidnightCalico
             cg.transform.rotation = Quaternion.Euler(0, 140f, 0);
             cat = cg.AddComponent<CatAI>();
             cat.Init(house);
+            var newcomerObject = new GameObject("新入り猫（怯える灰白猫）");
+            newcomerObject.transform.position = new Vector3(13.8f,3f,12.7f);
+            newcomer = newcomerObject.AddComponent<TimidCat>();
+            newcomer.Init(house);
 
             // 柱時計の音
             var clock = new GameObject("柱時計の音");
@@ -95,6 +109,8 @@ namespace MidnightCalico
             ui = gameObject.AddComponent<UIManager>();
             ui.Build(this);
             ui.ShowTitle();
+            nightEvents = gameObject.AddComponent<NightEvents>();
+            nightEvents.Init(this);
         }
 
         static T[] FindObjectsByTypeCompat<T>() where T : Object
@@ -152,6 +168,16 @@ namespace MidnightCalico
             Toast(cs.retro ? "画質：レトロ（低解像度）" : "画質：高精細");
         }
 
+        public void ApplyVisibility()
+        {
+            float gain = FilmLook.Brightness;
+            RenderSettings.ambientSkyColor = new Color(0.21f, 0.235f, 0.29f) * gain;
+            RenderSettings.ambientEquatorColor = new Color(0.18f, 0.18f, 0.205f) * gain;
+            RenderSettings.ambientGroundColor = new Color(0.11f, 0.105f, 0.10f) * gain;
+        }
+
+        public float GameMinutes { get { return 120f + Mathf.Clamp01(elapsed / GameLength) * 240f; } }
+
         public string ClockText
         {
             get
@@ -183,6 +209,46 @@ namespace MidnightCalico
         public void AddDamage()
         {
             damage++;
+        }
+
+        /// <summary>小物が倒れた/壊れた瞬間を記録し、最大8枚まで証拠写真を撮る（リザルトの被害レポート用）</summary>
+        public void RecordDamage(string propName, Vector3 pos)
+        {
+            damage++;
+            if (damageEvents.Count >= MaxDamageShots) return;
+            StartCoroutine(CaptureDamageShot(propName, pos));
+        }
+
+        IEnumerator CaptureDamageShot(string propName, Vector3 pos)
+        {
+            yield return new WaitForEndOfFrame();
+            // ScreenCaptureモジュール（WebGLでは不安定）を使わず、現在のゲームカメラを
+            // 小さめのRenderTextureへ再レンダーしてReadPixelsする（どのプラットフォームでも動く方法）
+            Texture2D tex = null;
+            var cam = FixedCameraSystem.I != null ? FixedCameraSystem.I.cam : null;
+            if (cam != null)
+            {
+                int w = Mathf.Max(64, Screen.width / 3);
+                int h = Mathf.Max(64, Screen.height / 3);
+                var rt = RenderTexture.GetTemporary(w, h, 24);
+                var prevTarget = cam.targetTexture;
+                var prevActive = RenderTexture.active;
+                cam.targetTexture = rt;
+                cam.Render();
+                RenderTexture.active = rt;
+                tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+                tex.ReadPixels(new UnityEngine.Rect(0, 0, w, h), 0, 0);
+                tex.Apply();
+                cam.targetTexture = prevTarget;
+                RenderTexture.active = prevActive;
+                RenderTexture.ReleaseTemporary(rt);
+            }
+            damageEvents.Add(new DamageEvent
+            {
+                photo = tex,
+                room = house != null ? house.RoomName(pos) : "",
+                propName = propName,
+            });
         }
 
         public void OpenInventory()
@@ -219,6 +285,7 @@ namespace MidnightCalico
         /// <summary>調べる</summary>
         public void DoSearch(SearchPoint sp)
         {
+            if (nightEvents != null && nightEvents.TryExtinguish(sp)) return;
             var lines = new List<string>();
             if (sp.locked && AudioMan.I != null) AudioMan.I.Play2D(Sfx.Locked, 0.8f);
             if (sp.item != ItemId.None && !sp.taken)
