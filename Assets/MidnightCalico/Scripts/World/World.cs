@@ -208,8 +208,10 @@ namespace MidnightCalico
             return best;
         }
 
-        /// <summary>ダイクストラ法。avoid に近い点はコストを上げる（主人公を避けて逃げる）</summary>
-        public List<int> Path(int from, int to, Vector3 avoid, float avoidWeight)
+        /// <summary>ダイクストラ法。avoid に近い点はコストを上げる（主人公を避けて逃げる）。
+        /// roomCamPos を渡すと、各部屋の固定カメラにも近づきすぎないようにする
+        /// （カメラのニアクリップが浅く、至近距離を横切ると猫が巨大に歪んで見えるため）。</summary>
+        public List<int> Path(int from, int to, Vector3 avoid, float avoidWeight, Dictionary<string, Vector3> roomCamPos = null, float camWeight = 0f)
         {
             int n = nodes.Count;
             var dist = new float[n];
@@ -231,6 +233,15 @@ namespace MidnightCalico
                     {
                         float da = Vector3.Distance(new Vector3(nodes[v].x, 0, nodes[v].z), new Vector3(avoid.x, 0, avoid.z));
                         if (da < 2.5f) w += (2.5f - da) * avoidWeight;
+                    }
+                    if (camWeight > 0f && roomCamPos != null)
+                    {
+                        Vector3 camP;
+                        if (roomCamPos.TryGetValue(nodeRoom[v], out camP))
+                        {
+                            float dc = Vector3.Distance(new Vector3(nodes[v].x, 0, nodes[v].z), new Vector3(camP.x, 0, camP.z));
+                            if (dc < 2.0f) w += (2.0f - dc) * camWeight;
+                        }
                     }
                     if (dist[u] + w < dist[v]) { dist[v] = dist[u] + w; prev[v] = u; }
                 }

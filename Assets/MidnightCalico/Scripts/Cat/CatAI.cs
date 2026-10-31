@@ -31,6 +31,7 @@ namespace MidnightCalico
         AudioSource purr;
         Vector3 lastPlayerPos;
         float lastSeenT = -99f;
+        Dictionary<string, Vector3> roomCamPos;
 
         const float WalkSpeed = 0.75f, TrotSpeed = 1.8f, FleeSpeed = 4.6f, ZoomSpeed = 5.2f;
 
@@ -38,6 +39,8 @@ namespace MidnightCalico
         {
             I = this;
             house = h;
+            roomCamPos = new Dictionary<string, Vector3>();
+            foreach (var z in h.zones) if (!roomCamPos.ContainsKey(z.room)) roomCamPos[z.room] = z.pos;
             gameObject.layer = 2;
             model = gameObject.AddComponent<CatModel>();
             model.Build();
@@ -540,7 +543,8 @@ namespace MidnightCalico
             {
                 path.Add(new WP { p = spot.approach, forceY = true });
             }
-            var nodes = g.Path(from, to, P != null ? P.transform.position : Vector3.zero, avoidWeight);
+            float camWeight = fleeing ? 10f : 0f;
+            var nodes = g.Path(from, to, P != null ? P.transform.position : Vector3.zero, avoidWeight, roomCamPos, camWeight);
             for (int i = 0; i < nodes.Count; i++)
             {
                 // 最初の点が自分より後ろ側なら飛ばす
