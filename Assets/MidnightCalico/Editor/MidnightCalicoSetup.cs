@@ -169,7 +169,9 @@ namespace MidnightCalico.EditorTools
             EditorBuildSettings.scenes = list.ToArray();
 
             // WebGL：GitHub Pages で確実に動くよう圧縮なし
-            PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
+            // GitHub Pages側のContent-Encoding設定に依存せず、Unity標準ローダーでgzipを展開する。
+            PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
+            PlayerSettings.WebGL.decompressionFallback = true;
             PlayerSettings.productName = "深夜二時のミケ";
             PlayerSettings.runInBackground = true;
             // iPhone：横画面のみ・ステータスバー非表示
