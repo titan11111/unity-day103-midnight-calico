@@ -1,23 +1,25 @@
 {
-  "buildId": "day103-a18dce1ae58d",
-  "sourceCommit": "082dcd374cd8b73d0dda0c690460334ecc267aa0",
-  "createdAtUtc": "2026-10-30T12:57:33.327669+00:00",
+  "buildId": "day103-32618c11cb89",
+  "sourceCommit": "ead3dc9315b578202ec50ddc391dfc51ed50521e",
+  "createdAtUtc": "2026-10-31T02:17:00+00:00",
   "features": [
     "touch-control-v2",
     "camera-cut-direction",
     "stable-action-target",
-    "cat-eyes-in-darkness"
+    "cat-eyes-in-darkness",
+    "flee-camera-avoidance"
   ],
   "verification": {
-    "unityEditorChecks": 83,
-    "iPhonePhysicalDevice": "not-tested"
+    "unityEditorChecks": "not-run-this-pass",
+    "iPhonePhysicalDevice": "not-tested",
+    "webglSmokeTest": "title-screen-load-only-no-console-errors"
   },
   "files": {
     ".nojekyll": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "Build/WebGL.data": "fb7295ce93a01c745109461677038e9f54930f62db66d17dd19d1e071d312907",
-    "Build/WebGL.framework.js": "394ee8cadb31759f7f2117ae2836309e7ba0307ac6e0625515c87bd1f88f13cd",
-    "Build/WebGL.loader.js": "4c012028f97983d08fc4282f9b4c3aa28ec11964a67f05a808e22b755c7a40e4",
-    "Build/WebGL.wasm": "19e88f3033fc8e69f2834b09e068dc0f80f62865745007c5150c38b91a1fd5f3",
+    "Build/WebGL.data": "19ce58f4c57ff83fc04570b572f3211542dd50cca71f17cd15c8af957cbeea62",
+    "Build/WebGL.framework.js": "cf8c66a93bf4339352ea33c4ca290e7bf76bbafaa263495b32b279577a2cdaa3",
+    "Build/WebGL.loader.js": "8335526118ce3e9483cebf829d530e690ec54f9c32cc5f1defb27b6cf13c3c77",
+    "Build/WebGL.wasm": "c3723140da1d808430b91f2642cf16134f0d216be816170cf08a2f2f17ba5e88",
     "TemplateData/MemoryProfiler.png": "0ce87be20d0c24ab6cb73b57de2004da261cc2a641e69319c6ae3fe11fc85483",
     "TemplateData/favicon.ico": "9c13beb90ee8f70580d52a21d5233970d1c89e71e4a34a462c22610941c3c77f",
     "TemplateData/fullscreen-button.png": "21221581673a54b8139d408d4a3f8d2b879e86827d4b6fc53b995ff7a99ee3e9",
