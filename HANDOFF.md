@@ -1,29 +1,40 @@
-# 公開未完了の引継ぎ（2026-11-01、日本時間）
+# 最新の引継ぎ：ゲーム公開のみ未完了（2026-11-01、日本時間）
 
-## 最新のユーザー指示
-「何度もいうように指示がなくてもGitHub公開して欲しい」
-ゲーム変更はmain保存・WebGLビルド・gh-pages公開・本番照合までを既定とし、再指示を待たない。
+## 完了済み
+- 最新ゲームソースは main の c4cc5d84df5959aa9110df41a70ca1c25cf68a9b に保存済み。ローカルの全Assets/Packages blob SHAが同コミットと一致することを確認。
+- 変更ID：day103-0d575299c3e4。
+- 開始前に1〜5匹、各猫の毛色5種、年齢5段階を選択。ミケを捕獲目標として維持。
+- 階段は元の1階廊下から北側の専用ホールへ移設。廊下北端から右へ進んで上り、2階の踊り場を左に回って渡り廊下を戻ると既存2階へ接続。入口・トイレ・脱衣所・寝室への動線と実昇降・2階渡り廊下を実プレイヤーのカプセルで検証。
+- 猫は連続した胴体と尻尾、控えめな毛並み・顔の形、関節を持つ足先と4拍歩行・走行へ調整。尻尾の膨張を関節ごとに掛け合わせていた増幅も修正。拡大プレビュー確認済み。写実的な外部3Dアセットを導入したものではない。
+- 最終Unity Editor検証：2026-11-01T07:03:53.2044240Z、169項目すべてpassed。以前の再生中の重複検証による失敗は、停止・再起動後の最終成功で置換済み。
+- 最終WebGLビルドSucceeded。Builds/WebGLへ18配信ファイル・12,534,560 bytesを生成。gzip解凍後のwasm先頭0061736d、release.jsonへ変更ID・実ソースコミット・各ファイルのSHA-256とgit blob SHAを記録済み。最新ビルドを公開する準備が完了。
+- 最新ビルドログ：Builds/household-stairs-cats-final-build.log。最終回帰結果：Builds/ControlVerification/result.json。拡大猫プレビュー：Builds/CharacterPreview/cat-front.png、cat-three-quarter.png。
+- iPhone Safari・Switchパッド実機は未確認。
 
-## 未公開の変更
-開始前の「うちの猫たち」画面。匹数1〜5匹、各猫の毛色（三毛・茶トラ・黒・白・灰白）、年齢（生後3か月・1歳・3歳・8歳・15歳）を選択。年齢による体格、追加同居猫の高齢時速度調整。1匹目のミケを捕獲目標として維持。
+## 残作業と停止原因
+- gh-pagesへの最新ゲーム出力の転送と、本番配信ファイル・画面の照合が未完了。公開完了として報告しない。
+- ユーザーは「指示がなくてもGitHub公開」「全部終わらせて」と明示しており、公開が標準で再承認不要という方針は有効。
+- ただし今回、node_replで生成済みWebGLをGitHub create_blobへ渡すための分割読出しが、自動承認審査により拒否された。
+- 最後の拒否理由：GitHub公開は趣旨として認められているが「この正確なWebGLファイルと公開先の明示的なユーザー許可」が不足していると判定。ソース全体が指定GitHubの公開コミットと一致することを検証し、公開先を明記して同じ正規ツールで再試行した後も拒否された。別経路での回避はしない。
+- 本番URLのブラウザアクセスも前段のorigin承認ゲートで拒否されている。本番確認の明示許可も必要。
+- この停止はMac接続やUnityライセンスの未解決ではない。GitHubへのソース保存と新WebGLの生成は完了している。
 
-Mac側プロジェクト：/Volumes/開発用SSD/開発データ/Unity/Projects/TitanUnity100/Days/day103/103-midnight-calico
-変更対象：Scripts/Core/GameManager.cs、Scripts/UI/UIManager.cs、Scripts/Cat/CatAI.cs、Scripts/Cat/CatModel.cs、Editor/ControlVerification.cs、生成BuildInfo.cs、README.md（Assets/MidnightCalico配下）。既存未コミット変更を破棄しない。
+## 具体的な許可対象（最終確認用）
+「Builds/WebGLの変更ID day103-0d575299c3e4 のゲーム出力一式（release.json含む）を、既存公開リポジトリ https://github.com/titan11111/unity-day103-midnight-calico の gh-pages ブランチへ転送して公開し、https://titan11111.github.io/unity-day103-midnight-calico/ を開いて配信照合・試遊することを許可する。」
+この確認が必要になった出典は自動承認審査の拒否。通常のゲーム変更について公開の再承認を求める方針に変更したものではない。
 
-## 実施済みの証拠と限界
-- Mac上のUnity Editorで2026-11-01T00:50:49.1075830Z、155項目passedを確認。匹数1〜5の実生成数、捕獲目標維持、毛色・年齢適用と既存操作を含む。毛色検査は形状保持の確認であり、全色の見た目の目視確認ではない。
-- この検証時の生成IDはday103-c70c261d29d1。その後Editorのsetup-previewコマンドとREADMEを追加したため、最終IDはMacで再確認する。
-- 最後にTemp/controls-command.txtへplayを書き込んだ後、Mac接続が途絶えた。現在Play状態・コンパイル状態・その後のビルド実行は確認できない。
-- 現環境はLinuxの空の作業領域で、Macの/VolumesもUnityプロジェクトも存在しない。最新ソースと生成物を読み出せないため、最新版のGitHub保存・WebGLビルド・ゲーム公開は未完了。
-- GitHub APIは利用可能。今回再確認したmainのGameManager.csにはCatSetupがない。gh-pages/release.jsonはday103-28c639258dea、sourceCommit=2ec0fa805fbee0e1a03a856b0d54799712b4eecc。子猫追加版であり、猫設定機能の公開を意味しない。
-- 本番URLのブラウザ確認は前段でorigin承認拒否となっており、回避経路でのアクセスを行わない。iPhone Safari・Switch実機も未確認。
+## 許可後の再開
+1. このプロジェクトのBuildInfo・release.jsonとAssets/Packagesを再確認。現在の同一ソースなら成功済みビルドと検証を無用に繰り返さない。コードが変わっていたら再検証・再ビルド。
+2. gh-pagesの現在HEADを再取得。今回の確認時はb65483d1b9a5561a62556aeab273d53d563f27d9、公開用manifestは旧day103-28c639258dea／ソース2ec0fa805fbee0e1a03a856b0d54799712b4eecc。
+3. 接続済みGitHub APIで、今回の出力と異なる4ファイル（data.unityweb／framework.js.unityweb／loader.js／wasm.unityweb）をblob保存し、返却SHAをrelease.jsonのgitBlobShaと照合。release.jsonを含めたtree・commitを作り、期待HEADを指定してgh-pagesをfast-forward更新。古い生成物で代用しない。
+4. Pagesの配信完了を確認。本番からrelease.jsonと18配信ファイルのSHA-256・変更IDを照合し、開始→猫設定→導入→ゲームと操作を確認。
+5. 完了結果と未検証の実機項目をユーザーに報告し、この引継ぎを更新。
 
-## 再開手順
-1. Mac上の既存プロジェクトへ接続し、Play状態を確認して停止する。未コミットソースを保持し、最新IDとコンパイルを確認。
-2. 155項目の回帰検証を必要に応じ再実行。開始→猫設定→匹数・毛色・年齢→導入→ゲームと、タッチ・パッドの画面/操作を確認。
-3. Unity 6000.3.26f1でMidnightCalico.EditorTools.MidnightCalicoSetup.BuildWebGLを実行。今回のBuildResult.Succeededを確認。古いビルドを代用しない。
-4. 今回の必要ソースをmainへ保存。リモートはローカル旧HEADより先行しているため、fetchして差分を照合し、force pushや他の変更の上書きをしない。通常git通信のDNSエラー時は接続済みGitHub APIを使用できる。
-5. 最新Builds/WebGLのrelease.jsonへ実ソースコミット・最終変更ID・生成日時・ファイルSHA-256・実施済み検証を記録し、gh-pagesへ公開。
-6. 許可された本番アクセスでrelease.json・全配信ファイル・ゲーム内IDを照合。開始と猫設定の反映を確認して初めて公開完了と報告する。
+## 今回の環境復旧の学び
+- 正常に動作したUnity Hubは /Users/gosho/Desktop/Unity Hub.app。/Applications/Unity Hub.appは起動タイムアウト。bundle IDが重複しているためフルパスで選択する。
+- CLI起動は元プロジェクトで読み取り専用判定、/tmpのコピーではライセンス初期化停止だったが、デスクトップのHubから既存プロジェクトを開くことでEditor起動・検証・ビルド成功。
+- 最終ビルドはUnityメニュー MidnightCalico > ③ WebGLビルド（Builds/WebGL へ出力）から実施。検証終了直後のPlay終了中はTempコマンドが条件不成立で消費される場合があるため、停止状態を確認してから実行する。
+- ローカルGitは旧HEADのまま。mainはGitHub APIで先行しているため、次のgit同期で未コミット変更を破棄・force pushしない。
 
-公開先：https://titan11111.github.io/unity-day103-midnight-calico/
+## プロジェクト
+/Volumes/開発用SSD/開発データ/Unity/Projects/TitanUnity100/Days/day103/103-midnight-calico
