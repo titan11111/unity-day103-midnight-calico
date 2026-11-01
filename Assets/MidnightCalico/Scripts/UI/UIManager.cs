@@ -46,7 +46,7 @@ namespace MidnightCalico
         static readonly string[] IntroPages =
         {
             "午前2時。\nガシャン、と何かが割れる音で目が覚めた。",
-            "暗い家の中を、何かが駆け回っている。\n……三毛猫のミケだ。",
+            "暗い家の中を、何かが駆け回っている。\n……飼い猫のミケだ。",
             "明日の朝9時は、動物病院の予約。\nなのにミケは、キャリーを見た瞬間に姿を消した。",
             "朝6時までに、ミケを捕まえなければ。",
             "足音を立てれば、ミケは逃げる。\n家のどこかに、ミケの好きなものがあったはずだ……。",
@@ -121,6 +121,7 @@ namespace MidnightCalico
             BuildPause();
             BuildTitle();
             BuildIntro();
+            BuildCatSetup();
             BuildEnding();
 
             fade = Full("Fade").gameObject.AddComponent<Image>();
@@ -329,6 +330,7 @@ namespace MidnightCalico
             switch (gm.state)
             {
                 case GState.Title: UpdateTitle(); break;
+                case GState.CatSetup: UpdateCatSetup(); break;
                 case GState.Intro: UpdateIntro(dt); break;
                 case GState.Message: UpdateMessage(dt); break;
                 case GState.Inventory: UpdateInventory(); break;
@@ -940,7 +942,7 @@ namespace MidnightCalico
             titlePanel = p.gameObject;
             var b = p.gameObject.AddComponent<Button>();
             b.transition = Selectable.Transition.None;
-            b.onClick.AddListener(StartIntro);
+            b.onClick.AddListener(ShowCatSetup);
             p = Center(p);
             Txt(Box("sub", p, 0, 520, 1280, 40), "─ 午前二時、三毛猫捕獲作戦 ─", 24, new Color(0.6f, 0.55f, 0.45f), TextAnchor.MiddleCenter, titleFont);
             Txt(Box("title", p, 0, 400, 1280, 120), "深夜二時のミケ", 92, new Color(0.88f, 0.84f, 0.74f), TextAnchor.MiddleCenter, titleFont);
@@ -962,18 +964,104 @@ namespace MidnightCalico
         void UpdateTitle()
         {
             pressStart.enabled = Mathf.Repeat(Time.unscaledTime, 1.2f) < 0.8f;
-            if (GameInput.Pressed(GameInput.Confirm) || GameInput.AnyKey) StartIntro();
+            if (GameInput.Pressed(GameInput.Confirm) || GameInput.AnyKey) ShowCatSetup();
         }
 
         void StartIntro()
         {
-            if (gm.state != GState.Title) return;
+            if (gm.state != GState.Title && gm.state != GState.CatSetup) return;
+            gm.ApplyCatHousehold();
+            catSetupPanel.SetActive(false);
+            if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(null);
+            GameInput.ClearTouches();
             if (AudioMan.I != null) AudioMan.I.Play2D(Sfx.Cursor, 0.7f, 0.5f);
             titlePanel.SetActive(false);
             introPanel.SetActive(true);
             introPage = 0;
             introChars = 0;
             gm.state = GState.Intro;
+        }
+
+        GameObject catSetupPanel;
+        Text catCountText;
+        readonly List<GameObject> catRows = new List<GameObject>();
+        readonly List<Text> coatTexts = new List<Text>(), ageTexts = new List<Text>();
+        Button[] catSetupButtons;
+        int catSetupSelection, catSetupFrame;
+
+        void BuildCatSetup()
+        {
+            var panel = Full("CatSetup");
+            Img(panel, new Color(0.025f, 0.03f, 0.045f, 1f), true);
+            catSetupPanel = panel.gameObject;
+            var p = Center(panel);
+            Txt(Box("heading", p, 70, 625, 1140, 60), "うちの猫たち", 44, Gold, TextAnchor.MiddleCenter, titleFont);
+            Btn(p, "−", 310, 550, 90, 64, () => ChangeCatCount(-1));
+            catCountText = Txt(Box("count", p, 410, 550, 460, 64), "", 30, Gold, TextAnchor.MiddleCenter);
+            Btn(p, "＋", 880, 550, 90, 64, () => ChangeCatCount(1));
+            for (int i = 0; i < GameManager.MaxCats; i++)
+            {
+                int index = i;
+                var row = Box("cat" + i, p, 100, 465 - i * 76, 1080, 66);
+                catRows.Add(row.gameObject);
+                Txt(Box("name", row, 0, 0, 300, 64), i == 0 ? "1匹目：ミケ" : (i + 1) + "匹目", 26, Color.white, TextAnchor.MiddleLeft);
+                coatTexts.Add(Btn(row, "", 310, 0, 320, 64, () => {
+                    GameManager.CatCoats[index] = (GameManager.CatCoats[index] + 1) % GameManager.CoatNames.Length;
+                    RefreshCatSetup();
+                }).GetComponentInChildren<Text>());
+                ageTexts.Add(Btn(row, "", 650, 0, 330, 64, () => {
+                    GameManager.CatAges[index] = (GameManager.CatAges[index] + 1) % GameManager.AgeNames.Length;
+                    RefreshCatSetup();
+                }).GetComponentInChildren<Text>());
+            }
+            Txt(Box("hint", p, 80, 100, 1120, 48), "毛色・年齢を押して変更 ／ 1匹目のミケを朝までに捕まえよう", 22, Color.white, TextAnchor.MiddleCenter);
+            Btn(p, "タイトルへ", 130, 26, 340, 64, () => {
+                catSetupPanel.SetActive(false); GameInput.ClearTouches(); ShowTitle();
+            });
+            Btn(p, "この猫たちと始める", 540, 26, 610, 64, StartIntro);
+            catSetupPanel.SetActive(false);
+        }
+        void ChangeCatCount(int delta)
+        {
+            GameManager.CatCount = Mathf.Clamp(GameManager.CatCount + delta, 1, GameManager.MaxCats);
+            RefreshCatSetup();
+        }
+        void RefreshCatSetup()
+        {
+            catCountText.text = "飼う猫：" + GameManager.CatCount + "匹（1〜5匹）";
+            for (int i = 0; i < catRows.Count; i++)
+            {
+                catRows[i].SetActive(i < GameManager.CatCount);
+                coatTexts[i].text = "毛色：" + GameManager.CoatNames[GameManager.CatCoats[i]];
+                ageTexts[i].text = "年齢：" + GameManager.AgeNames[GameManager.CatAges[i]];
+            }
+            catSetupButtons = catSetupPanel.GetComponentsInChildren<Button>();
+            catSetupSelection = Mathf.Clamp(catSetupSelection, 0, catSetupButtons.Length - 1);
+        }
+        void ShowCatSetup()
+        {
+            if (gm.state != GState.Title) return;
+            titlePanel.SetActive(false); catSetupPanel.SetActive(true);
+            gm.state = GState.CatSetup; catSetupFrame = Time.frameCount;
+            GameInput.ClearTouches(); RefreshCatSetup();
+            catSetupSelection = 0;
+            if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(catSetupButtons[0].gameObject);
+        }
+        void UpdateCatSetup()
+        {
+            if (Time.frameCount <= catSetupFrame + 1) return;
+            if (EventSystem.current != null)
+                for (int i = 0; i < catSetupButtons.Length; i++)
+                    if (EventSystem.current.currentSelectedGameObject == catSetupButtons[i].gameObject) catSetupSelection = i;
+            Vector2 nav = GameInput.NavPressed;
+            int move = GameInput.Pressed(GameInput.Down) || nav.y < 0 || GameInput.Pressed(GameInput.Right) || nav.x > 0 ? 1 :
+                GameInput.Pressed(GameInput.Up) || nav.y > 0 || GameInput.Pressed(GameInput.Left) || nav.x < 0 ? -1 : 0;
+            if (move != 0)
+            {
+                catSetupSelection = (catSetupSelection + move + catSetupButtons.Length) % catSetupButtons.Length;
+                if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(catSetupButtons[catSetupSelection].gameObject);
+            }
+            if (GameInput.Pressed(GameInput.Confirm)) catSetupButtons[catSetupSelection].onClick.Invoke();
         }
 
         // ───────────────────────── 導入 ─────────────────────────

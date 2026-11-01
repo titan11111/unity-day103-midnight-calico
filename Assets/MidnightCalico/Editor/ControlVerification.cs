@@ -37,6 +37,36 @@ namespace MidnightCalico.EditorTools
         {
             if (SessionState.GetBool("mc.controlsVerifying", false) && (type == LogType.Exception || type == LogType.Error)) failure = condition + "\n" + stack;
         }
+        static void VerifyCatSetup(GameManager gm)
+        {
+            int savedCount = GameManager.CatCount;
+            int[] savedCoats = (int[])GameManager.CatCoats.Clone();
+            int[] savedAges = (int[])GameManager.CatAges.Clone();
+            gm.ui.SendMessage("ShowCatSetup");
+            Require(gm.state == GState.CatSetup, "Title opens household setup before introduction");
+            for (int count = 1; count <= GameManager.MaxCats; count++)
+            {
+                GameManager.CatCount = count; gm.ApplyCatHousehold();
+                Require(UnityEngine.Object.FindObjectsByType<CatModel>(FindObjectsSortMode.None).Length == count,
+                    "Selected household contains exactly " + count + " active cats");
+                Require(CatAI.I == gm.cat && gm.cat.gameObject.activeSelf, "Mike remains capture objective at count " + count);
+            }
+            for (int coat = 0; coat < GameManager.CoatNames.Length; coat++)
+            {
+                GameManager.CatCoats[0] = coat; gm.ApplyCatHousehold();
+                Require(gm.cat.model.GetComponentsInChildren<Renderer>().Length > 10, "Coat choice " + coat + " preserves cat geometry");
+            }
+            for (int age = 0; age < GameManager.AgeNames.Length; age++)
+            {
+                GameManager.CatAges[0] = age; gm.ApplyCatHousehold();
+                Require(Mathf.Approximately(gm.cat.transform.localScale.x, GameManager.CatScale(age)), "Age choice " + age + " applies body scale");
+            }
+            GameManager.CatCount = savedCount;
+            Array.Copy(savedCoats, GameManager.CatCoats, savedCoats.Length);
+            Array.Copy(savedAges, GameManager.CatAges, savedAges.Length);
+            gm.ApplyCatHousehold();
+            gm.ui.SendMessage("RefreshCatSetup");
+        }
         static void Require(bool condition, string message)
         {
             if (!condition) throw new Exception(message);
@@ -99,7 +129,13 @@ namespace MidnightCalico.EditorTools
                 File.Delete(CommandPath);
                 try
                 {
-                    if (cmd == "verify") Run();
+                    if (cmd == "stop") EditorApplication.isPlaying = false;
+                    else if (cmd == "setup-preview" && EditorApplication.isPlaying && GameManager.I != null)
+                    {
+                        GameManager.I.ui.SendMessage("ShowCatSetup");
+                        ScreenCapture.CaptureScreenshot("Builds/ControlVerification/cat-setup.png");
+                    }
+                    else if (cmd == "verify") Run();
                     else if (cmd == "play" && !EditorApplication.isPlayingOrWillChangePlaymode) MidnightCalicoSetup.OpenAndPlay();
                     else if (cmd == "build" && !EditorApplication.isPlayingOrWillChangePlaymode) MidnightCalicoSetup.BuildWebGL();
                     else if (cmd == "preview" && !EditorApplication.isPlayingOrWillChangePlaymode) CharacterPreview.Render();
@@ -118,6 +154,7 @@ namespace MidnightCalico.EditorTools
                     checks.Clear(); if (saved.checks != null) checks.AddRange(saved.checks);
                     originalRun = SessionState.GetInt("mc.originalRun",1);
                     gm.ui.SetTouchVisible(true); GameInput.SetRunMode(true);
+                    VerifyCatSetup(gm);
                     gm.ui.SendMessage("StartIntro"); gm.ui.SendMessage("BeginFromIntro");
                     VerifyStairVisibility(gm);
                     Require(gm.kitten != null && gm.kitten.IsMale && gm.kitten.model != null && gm.kitten.transform.localScale.x < 0.6f,

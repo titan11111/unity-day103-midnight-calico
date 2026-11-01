@@ -743,6 +743,7 @@ namespace MidnightCalico
     {
         public CatModel model;
         public bool IsMale { get { return true; } }
+        public float activity = 1f;
         public float DistanceTravelled { get; private set; }
         Vector3 target;
         float phaseEnd, nextVoice, nextTurn, hop;
@@ -792,7 +793,7 @@ namespace MidnightCalico
             {
                 Vector3 delta = target - transform.position; delta.y = 0f;
                 Vector3 direction = delta.normalized;
-                float distance = Mathf.Min(2.7f * Time.deltaTime, delta.magnitude);
+                float distance = Mathf.Min(2.7f * activity * Time.deltaTime, delta.magnitude);
                 Vector3 next = transform.position + direction * distance;
                 // 家具をすり抜けず、床があるリビング内だけを走る。
                 bool blocked = Physics.SphereCast(transform.position + Vector3.up * 0.14f, 0.09f,
@@ -803,7 +804,7 @@ namespace MidnightCalico
                 {
                     transform.position = next;
                     DistanceTravelled += distance;
-                    model.speed = 2.7f;
+                    model.speed = 2.7f * activity;
                     transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(direction), 900f * Time.deltaTime);
                     hop += Time.deltaTime * 9f;
                 }

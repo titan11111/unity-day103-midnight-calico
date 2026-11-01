@@ -16,6 +16,7 @@ namespace MidnightCalico
         readonly Transform[] legLower = new Transform[4];
         readonly List<Transform> tail = new List<Transform>();
         Material eyeMat;
+        readonly Dictionary<Renderer, string> originalFurNames = new Dictionary<Renderer, string>();
         readonly List<Transform> pupils = new List<Transform>();
         float earTwitchL, earTwitchR, tipFlick, breathT, headTilt;
         Renderer[] eyeRenderers;
@@ -139,6 +140,28 @@ namespace MidnightCalico
             }
 
             foreach (var r in GetComponentsInChildren<Renderer>()) r.receiveShadows = true;
+        }
+
+        // Only fur materials change; eyes, nose and whiskers retain their own materials.
+        public void ApplyAppearance(int coat, int age)
+        {
+            coat = Mathf.Clamp(coat, 0, GameManager.CoatNames.Length - 1);
+            var baseColor = coat == 1 ? new Color(0.92f, 0.56f, 0.24f) :
+                coat == 2 ? new Color(0.07f, 0.075f, 0.085f) :
+                coat == 4 ? new Color(0.42f, 0.48f, 0.55f) : new Color(0.95f, 0.94f, 0.9f);
+            var fur = coat == 0 ? Mat.WithNormal(Mat.Make("chosenCalico", Color.white, Tex.Calico(), 0.12f), 3.5f) : Mat.Make("chosenFur" + coat, baseColor, null, 0.12f);
+            var pale = Mat.Make("chosenPale" + coat, coat == 2 ? baseColor : new Color(0.95f, 0.94f, 0.9f), null, 0.08f);
+            var patch = Mat.Make("chosenPatch" + coat, coat == 0 || coat == 1 ? new Color(0.85f, 0.5f, 0.2f) : baseColor, null, 0.08f);
+            foreach (var r in GetComponentsInChildren<Renderer>(true))
+            {
+                if (!originalFurNames.ContainsKey(r)) originalFurNames[r] = r.sharedMaterial != null ? r.sharedMaterial.name : "";
+                string n = originalFurNames[r];
+                if (n.Contains("Fur") || n.Contains("kittenGinger") || n.StartsWith("chosen")) r.sharedMaterial = fur;
+                else if (n.StartsWith("catWhite")) r.sharedMaterial = coat == 3 ? fur : pale;
+                else if (n.StartsWith("catOrange") || n.StartsWith("newCatGrey")) r.sharedMaterial = patch;
+                else if (n.StartsWith("catBlack")) r.sharedMaterial = coat == 0 ? Mat.Make("chosenBlack", new Color(0.09f, 0.08f, 0.07f), null, 0.1f) : patch;
+            }
+            if (head != null) head.localScale = Vector3.one * (age == 0 ? 1.18f : 1f);
         }
 
         void LateUpdate()

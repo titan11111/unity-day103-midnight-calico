@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 
 namespace MidnightCalico
 {
-    public enum GState { Title, Intro, Play, Message, Inventory, Pause, Ending }
+    public enum GState { Title, CatSetup, Intro, Play, Message, Inventory, Pause, Ending }
 
     /// <summary>リザルトの「おうちの被害レポート」1件分（撮影した写真・部屋名・被害にあった物）</summary>
     public class DamageEvent
@@ -42,6 +42,48 @@ namespace MidnightCalico
         public bool caught;
         public bool showDebug;
         public int resumeFrame;   // 画面を閉じたフレームは操作を受け付けない（同じキーで再度開かないように）
+
+        public const int MaxCats = 5;
+        public static int CatCount = 3;
+        public static readonly int[] CatCoats = { 0, 4, 1, 2, 3 };
+        public static readonly int[] CatAges = { 2, 1, 0, 2, 3 };
+        public static readonly string[] CoatNames = { "三毛", "茶トラ", "黒", "白", "灰白" };
+        public static readonly string[] AgeNames = { "生後3か月", "1歳", "3歳", "8歳", "15歳" };
+        readonly List<PlayfulKitten> extraCats = new List<PlayfulKitten>();
+
+        public void ApplyCatHousehold()
+        {
+            CatCount = Mathf.Clamp(CatCount, 1, MaxCats);
+            cat.model.ApplyAppearance(CatCoats[0], CatAges[0]);
+            cat.transform.localScale = Vector3.one * CatScale(CatAges[0]);
+            newcomer.gameObject.SetActive(CatCount >= 2);
+            kitten.gameObject.SetActive(CatCount >= 3);
+            if (CatCount >= 2)
+            {
+                newcomer.model.ApplyAppearance(CatCoats[1], CatAges[1]);
+                newcomer.transform.localScale = Vector3.one * CatScale(CatAges[1]);
+            }
+            if (CatCount >= 3) ConfigureCompanion(kitten, 2);
+            for (int i = 3; i < CatCount; i++)
+            {
+                if (extraCats.Count <= i - 3)
+                {
+                    var go = new GameObject("飼い猫 " + (i + 1));
+                    go.transform.position = new Vector3(1.5f + (i - 3) * 1.5f, 0, 3.4f);
+                    var companion = go.AddComponent<PlayfulKitten>();
+                    companion.Init(); extraCats.Add(companion);
+                }
+                ConfigureCompanion(extraCats[i - 3], i);
+            }
+            for (int i = 0; i < extraCats.Count; i++) extraCats[i].gameObject.SetActive(i + 3 < CatCount);
+        }
+        public static float CatScale(int age) { return age == 0 ? 0.55f : age == 1 ? 0.85f : 1f; }
+        void ConfigureCompanion(PlayfulKitten companion, int index)
+        {
+            companion.model.ApplyAppearance(CatCoats[index], CatAges[index]);
+            companion.transform.localScale = Vector3.one * CatScale(CatAges[index]);
+            companion.activity = CatAges[index] >= 3 ? 0.55f : 1f;
+        }
 
         void Awake()
         {
