@@ -108,7 +108,8 @@ namespace MidnightCalico
                 var legMat = (i == 2) ? orange : (i == 3 ? fur : white);
                 legUpper[i] = Geo.Pivot(body, "leg" + i, hips[i]);
                 Geo.MeshObj(legUpper[i],"thigh",BuildLimbMesh(0.09f,back?0.031f:0.021f,0.017f),Vector3.zero,Vector3.zero,Vector3.one,legMat);
-                Geo.Sph(legUpper[i],"softElbow",new Vector3(0,-0.09f,0),new Vector3(0.035f,0.036f,0.038f),legMat);
+                // 肘の継ぎ目は脚の太さに揃えた小さな丸みだけにし、玉が付いたように見えないようにする。
+                Geo.Sph(legUpper[i],"softElbow",new Vector3(0,-0.09f,0),new Vector3(0.019f,0.02f,0.019f),legMat);
                 legLower[i] = Geo.Pivot(legUpper[i],"knee",new Vector3(0,-0.09f,0));
                 Geo.MeshObj(legLower[i],"shin",BuildLimbMesh(0.085f,0.017f,0.012f),Vector3.zero,Vector3.zero,Vector3.one,white);
                 paws[i] = Geo.Pivot(legLower[i],"foot",new Vector3(0,-0.085f,0));
@@ -137,10 +138,11 @@ namespace MidnightCalico
             {
                 float u=x/(float)width,v=y/(float)height;
                 float orange=Mathf.Exp(-((u-0.23f)*(u-0.23f)/0.012f+(v-0.7f)*(v-0.7f)/0.09f));
-                float black=Mathf.Exp(-((u-0.72f)*(u-0.72f)/0.009f+(v-0.4f)*(v-0.4f)/0.055f));
+                float black=Mathf.Exp(-((u-0.72f)*(u-0.72f)/0.016f+(v-0.58f)*(v-0.58f)/0.07f));
                 Color c=new Color(0.92f,0.9f,0.84f);
                 c=Color.Lerp(c,new Color(0.77f,0.43f,0.18f),Mathf.SmoothStep(0,1,Mathf.InverseLerp(0.35f,0.48f,orange)));
-                c=Color.Lerp(c,new Color(0.12f,0.11f,0.1f),Mathf.SmoothStep(0,1,Mathf.InverseLerp(0.38f,0.51f,black)));
+                // 黒斑はチェスト正面に寄らない位置へ移し、境界をなだらかにして穴のように見えるのを防ぐ。
+                c=Color.Lerp(c,new Color(0.17f,0.15f,0.13f),Mathf.SmoothStep(0,1,Mathf.InverseLerp(0.3f,0.62f,black)));
                 c*=0.97f+0.03f*Mathf.PerlinNoise(u*110f,v*30f);pixels[y*width+x]=c;
             }
             softCalico.SetPixels(pixels);softCalico.Apply();return softCalico;
@@ -181,7 +183,12 @@ namespace MidnightCalico
             float[] h={0.012f,0.06f,0.082f,0.067f,0.07f,0.086f,0.067f,0.02f};
             const int sides=24, subdivisions=4;
             int rings=(z.Length-1)*subdivisions+1;
-            var vertices=new Vector3[rings*(sides+1)];var uv=new Vector2[vertices.Length];
+            // 両端の小さな開口をふさぐ中心頂点を2つ追加し、胸先に穴が見えないようにする。
+            // 平らな円盤だと光を正面反射してテカった丸に見えるため、わずかに外へ膨らませてなだらかな丸みにする。
+            var vertices=new Vector3[rings*(sides+1)+2];var uv=new Vector2[vertices.Length];
+            int rearCap=vertices.Length-2, frontCap=vertices.Length-1;
+            vertices[rearCap]=new Vector3(0,0.005f,z[0]-0.01f);uv[rearCap]=new Vector2(0.5f,0f);
+            vertices[frontCap]=new Vector3(0,0.005f,z[z.Length-1]+0.012f);uv[frontCap]=new Vector2(0.5f,1f);
             var triangles=new List<int>();
             for(int r=0;r<rings;r++)
             {
@@ -196,6 +203,11 @@ namespace MidnightCalico
                     uv[v]=new Vector2(k/(float)sides,r/(float)(rings-1));
                     if(r<rings-1 && k<sides)
                     { int n=v+sides+1;triangles.Add(v);triangles.Add(v+1);triangles.Add(n);triangles.Add(v+1);triangles.Add(n+1);triangles.Add(n); }
+                    // 巻き順を断定せず両面分追加し、どちらから見ても穴に見えないようにする。
+                    if(r==0 && k<sides)
+                    { triangles.Add(rearCap);triangles.Add(v+1);triangles.Add(v); triangles.Add(rearCap);triangles.Add(v);triangles.Add(v+1); }
+                    if(r==rings-1 && k<sides)
+                    { triangles.Add(frontCap);triangles.Add(v);triangles.Add(v+1); triangles.Add(frontCap);triangles.Add(v+1);triangles.Add(v); }
                 }
             }
             var mesh=new Mesh{name="Feline continuous torso"};mesh.vertices=vertices;mesh.uv=uv;mesh.triangles=triangles.ToArray();mesh.RecalculateNormals();mesh.RecalculateBounds();return mesh;

@@ -395,7 +395,7 @@ namespace MidnightCalico.EditorTools
         {
             var model=gm.cat.model;
             var torso=model.transform.Find("body/torso");
-            Require(torso != null && torso.GetComponent<MeshFilter>().sharedMesh.vertexCount==725,"Cat torso is one continuous feline mesh");
+            Require(torso != null && torso.GetComponent<MeshFilter>().sharedMesh.vertexCount==727,"Cat torso is one continuous feline mesh");
             Transform paw=model.transform.Find("body/leg0/knee/foot");
             Require(paw!=null,"Cat has articulated paws separate from lower legs");
             var before=paw.position;model.speed=1.1f;model.pose=CatPose.Stand;
