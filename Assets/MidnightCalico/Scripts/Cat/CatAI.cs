@@ -738,6 +738,89 @@ namespace MidnightCalico
     }
 
     /// <summary>2階の新入り。ミケの単一インスタンスや捕獲目標には干渉しない。</summary>
+    /// <summary>ミケとは別の幼いオス猫。リビングを駆け回り、急旋回・じゃれつき・小跳びをする。</summary>
+    public class PlayfulKitten : MonoBehaviour
+    {
+        public CatModel model;
+        public bool IsMale { get { return true; } }
+        public float DistanceTravelled { get; private set; }
+        Vector3 target;
+        float phaseEnd, nextVoice, nextTurn, hop;
+        int phase;
+
+        public void Init()
+        {
+            transform.localScale = Vector3.one * 0.55f;
+            var visual = new GameObject("子猫のモデル");
+            visual.transform.SetParent(transform, false);
+            model = visual.AddComponent<CatModel>();
+            model.Build(false, true);
+            Geo.SetLayerRecursive(gameObject, 2);
+            BlobShadow.Attach(transform, 0.18f, 0.3f, 0.14f);
+            PickTarget();
+            phaseEnd = 3f;
+            nextVoice = 5f;
+        }
+
+        void PickTarget()
+        {
+            target = new Vector3(Random.Range(0.7f, 5.3f), 0f, Random.Range(0.7f, 6.3f));
+        }
+
+        void Update()
+        {
+            var gm = GameManager.I;
+            if (gm == null || gm.state != GState.Play || model == null) return;
+            if (gm.nightEvents != null && gm.nightEvents.Quaking)
+            {
+                model.speed = 0f; model.pose = CatPose.Crouch; model.earsBack = true;
+                model.transform.localPosition = Vector3.zero;
+                return;
+            }
+            model.earsBack = false;
+            float now = gm.elapsed;
+            if (now >= phaseEnd)
+            {
+                phase = (phase + 1) % 3;
+                phaseEnd = now + (phase == 0 ? Random.Range(2f, 4f) : phase == 1 ? 0.7f : 0.9f);
+                PickTarget();
+                hop = 0f;
+            }
+            model.speed = 0f;
+            model.pose = phase == 1 ? CatPose.Play : phase == 2 ? CatPose.Sit : CatPose.Stand;
+            if (phase == 0)
+            {
+                Vector3 delta = target - transform.position; delta.y = 0f;
+                Vector3 direction = delta.normalized;
+                float distance = Mathf.Min(2.7f * Time.deltaTime, delta.magnitude);
+                Vector3 next = transform.position + direction * distance;
+                // 家具をすり抜けず、床があるリビング内だけを走る。
+                bool blocked = Physics.SphereCast(transform.position + Vector3.up * 0.14f, 0.09f,
+                    direction, out var hit, distance + 0.08f, ~(1 << 2), QueryTriggerInteraction.Ignore);
+                bool floor = Physics.Raycast(next + Vector3.up * 0.3f, Vector3.down, out var ground,
+                    0.5f, ~(1 << 2), QueryTriggerInteraction.Ignore) && Mathf.Abs(ground.point.y) < 0.08f;
+                if (!blocked && floor && distance > 0.001f)
+                {
+                    transform.position = next;
+                    DistanceTravelled += distance;
+                    model.speed = 2.7f;
+                    transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(direction), 900f * Time.deltaTime);
+                    hop += Time.deltaTime * 9f;
+                }
+                if ((blocked || !floor || delta.magnitude < 0.2f) && now >= nextTurn)
+                {
+                    PickTarget(); nextTurn = now + 0.15f;
+                }
+            }
+            model.transform.localPosition = Vector3.up * (phase == 0 ? Mathf.Max(0f, Mathf.Sin(hop)) * 0.09f : 0f);
+            if (now >= nextVoice)
+            {
+                nextVoice = now + Random.Range(9f, 16f);
+                if (AudioMan.I != null) AudioMan.I.PlayAt(Sfx.MeowShort, transform.position, 0.28f, 1.55f);
+            }
+        }
+    }
+
     public class TimidCat : MonoBehaviour
     {
         public CatModel model;

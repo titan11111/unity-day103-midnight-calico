@@ -119,6 +119,9 @@ namespace MidnightCalico.EditorTools
                     originalRun = SessionState.GetInt("mc.originalRun",1);
                     gm.ui.SetTouchVisible(true); GameInput.SetRunMode(true);
                     gm.ui.SendMessage("StartIntro"); gm.ui.SendMessage("BeginFromIntro");
+                    VerifyStairVisibility(gm);
+                    Require(gm.kitten != null && gm.kitten.IsMale && gm.kitten.model != null && gm.kitten.transform.localScale.x < 0.6f,
+                        "Small male kitten exists independently from Mike and timid newcomer");
                     stick = UnityEngine.Object.FindFirstObjectByType<VirtualStick>(FindObjectsInactive.Include);
                     var buttons = UnityEngine.Object.FindObjectsByType<TouchButton>(FindObjectsInactive.Include,FindObjectsSortMode.None);
                     run = buttons.First(x=>x.id==GameInput.Run);
@@ -289,6 +292,10 @@ namespace MidnightCalico.EditorTools
                 {
                     GameInput.ClearTouches();
                     Require(gm.player.transform.position.y < 0.2f && gm.player.transform.position.z < 5.8f,"Player walks back down stairs to ground floor without teleport");
+                    Require(gm.kitten.DistanceTravelled > 0.5f && gm.kitten.transform.position.y < 0.1f &&
+                        gm.kitten.transform.position.x > 0.5f && gm.kitten.transform.position.x < 5.5f &&
+                        gm.kitten.transform.position.z > 0.5f && gm.kitten.transform.position.z < 6.5f,
+                        "Kitten actually runs while staying on living room floor");
                     WriteReport();
                     SessionState.SetBool("mc.controlsVerifying",false);
                     PlayerPrefs.SetInt("mc.runToggle",originalRun);
@@ -343,6 +350,45 @@ namespace MidnightCalico.EditorTools
             var cc=gm.player.GetComponent<CharacterController>();cc.enabled=false;
             gm.player.transform.SetPositionAndRotation(position,rotation);cc.enabled=true;
             Physics.SyncTransforms(); FixedCameraSystem.I.CancelShot();
+        }
+        static void VerifyStairVisibility(GameManager gm)
+        {
+            var system = FixedCameraSystem.I;
+            var position = gm.player.transform.position;
+            var rotation = gm.player.transform.rotation;
+            Require(gm.house.stairRenderers != null && gm.house.stairRenderers.Length == 51, "All steps, stair edges and rails are registered for cutaway rendering");
+            foreach (float z in new[] { 6.5f, 10.5f })
+            {
+                PlacePlayer(gm, new Vector3(6.4f, 0.02f, z), Quaternion.identity);
+                system.SendMessage("LateUpdate");
+                Require(system.current.room == "廊下" && gm.house.stairRenderers.All(r => !r.enabled), "Ground floor corridor at z=" + z + " hides staircase renderers");
+                Require(gm.house.stairRenderers.Where(r => r.GetComponent<Collider>() != null).All(r => r.GetComponent<Collider>().enabled), "Hidden staircase preserves physical colliders");
+                CaptureCamera(system.cam, "Builds/ControlVerification/corridor-" + z + ".png");
+            }
+            PlacePlayer(gm, new Vector3(7.3f, 1.5f, 9f), Quaternion.identity);
+            system.SendMessage("LateUpdate");
+            Require(system.current.room == "階段" && gm.house.stairRenderers.All(r => r.enabled), "Stair climbing camera restores steps and handrail");
+            CaptureCamera(system.cam, "Builds/ControlVerification/stairs-visible.png");
+            PlacePlayer(gm, position, rotation);
+            system.SendMessage("LateUpdate");
+        }
+        static void CaptureCamera(Camera cam, string path)
+        {
+            var previous = RenderTexture.active;
+            var target = cam.targetTexture;
+            var rt = RenderTexture.GetTemporary(960, 540, 24);
+            var texture = new Texture2D(960, 540, TextureFormat.RGB24, false);
+            try
+            {
+                cam.targetTexture = rt; cam.Render(); RenderTexture.active = rt;
+                texture.ReadPixels(new Rect(0, 0, 960, 540), 0, 0); texture.Apply();
+                File.WriteAllBytes(path, texture.EncodeToPNG());
+            }
+            finally
+            {
+                cam.targetTexture = target; RenderTexture.active = previous;
+                RenderTexture.ReleaseTemporary(rt); UnityEngine.Object.DestroyImmediate(texture);
+            }
         }
         static void VerifyNewcomerAndFaces(GameManager gm)
         {

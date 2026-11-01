@@ -29,6 +29,7 @@ namespace MidnightCalico
         public PlayerController player;
         public CatAI cat;
         public TimidCat newcomer;
+        public PlayfulKitten kitten;
         public UIManager ui;
         public NightEvents nightEvents;
 
@@ -100,6 +101,10 @@ namespace MidnightCalico
             newcomerObject.transform.position = new Vector3(13.8f,3f,12.7f);
             newcomer = newcomerObject.AddComponent<TimidCat>();
             newcomer.Init(house);
+            var kittenObject = new GameObject("オスの子猫（元気な茶トラ）");
+            kittenObject.transform.position = new Vector3(3.2f, 0f, 2.4f);
+            kitten = kittenObject.AddComponent<PlayfulKitten>();
+            kitten.Init();
 
             // 柱時計の音
             var clock = new GameObject("柱時計の音");

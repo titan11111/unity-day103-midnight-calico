@@ -57,6 +57,7 @@ namespace MidnightCalico
             quakeOffset = Vector3.zero;
             quakeRotation = Quaternion.identity;
             UpdateCamera();
+            UpdateStairVisibility();
             var gm = GameManager.I;
             if (gm == null || gm.state != GState.Play || gm.nightEvents == null) return;
             float strength = gm.nightEvents.QuakeStrength;
@@ -66,6 +67,16 @@ namespace MidnightCalico
             quakeRotation = Quaternion.Euler(0f, 0f, Mathf.Sin(t * 32f) * 0.7f * strength);
             cam.transform.position += quakeOffset;
             cam.transform.rotation *= quakeRotation;
+        }
+
+        // 1階を映す時だけ階段を透視する。Colliderは残すので通常どおり昇降できる。
+        // 階段専用カット・2階・演出カットでは表示を戻す。
+        public void UpdateStairVisibility()
+        {
+            if (house == null || house.stairRenderers == null) return;
+            bool visible = overrideShot || current == null || current.room == "階段" || current.minY >= 2.6f;
+            foreach (var renderer in house.stairRenderers)
+                if (renderer != null) renderer.enabled = visible;
         }
 
         void UpdateCamera()

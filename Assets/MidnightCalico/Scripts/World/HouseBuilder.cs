@@ -18,6 +18,7 @@ namespace MidnightCalico
         public readonly List<SearchPoint> searches = new List<SearchPoint>();
         public readonly List<TableShelter> shelters = new List<TableShelter>();
         public readonly List<LightSwitch> switches = new List<LightSwitch>();
+        public Renderer[] stairRenderers;
         public readonly CatGraph graph = new CatGraph();
         public Vector3 playerSpawn = new Vector3(7f, 0f, 2.4f);
         public Vector3 catSpawn = new Vector3(2.2f, 0f, 5.6f);
@@ -93,19 +94,22 @@ namespace MidnightCalico
             h.rooms.Add(new Room("2階 寝室",0f,7f,6f,14f) { floorY=3f });
             h.rooms.Add(new Room("2階 書斎",8f,7f,16f,14f) { floorY=3f });
             h.rooms.Add(new Room("2階 踊り場",6f,12.4f,8f,14f) { floorY=3f });
+            var stairRoot = new GameObject("階段（視界に合わせて表示）").transform;
+            stairRoot.SetParent(root, false);
             for(int i=0;i<20;i++)
             {
                 float z=5.8f+i*0.33f;
-                Geo.BoxMM(root,"階段の踏板"+i,6.85f,-0.05f,z,7.8f,(i+1)*0.15f,z+0.33f,woodLight);
-                Geo.BoxMM(root,"階段の鼻先"+i,6.85f,(i+1)*0.15f-0.025f,z,7.8f,(i+1)*0.15f,z+0.035f,woodDark,false);
+                Geo.BoxMM(stairRoot,"階段の踏板"+i,6.85f,-0.05f,z,7.8f,(i+1)*0.15f,z+0.33f,woodLight);
+                Geo.BoxMM(stairRoot,"階段の鼻先"+i,6.85f,(i+1)*0.15f-0.025f,z,7.8f,(i+1)*0.15f,z+0.035f,woodDark,false);
                 if(i%2==0)
                 {
                     float y=(i+1)*0.15f;
-                    Geo.Cyl(root,"階段手すり支柱",new Vector3(7.87f,y+0.38f,z+0.16f),0.025f,0.76f,woodDark,false);
+                    Geo.Cyl(stairRoot,"階段手すり支柱",new Vector3(7.87f,y+0.38f,z+0.16f),0.025f,0.76f,woodDark,false);
                 }
             }
-            var rail=Geo.Box(root,"階段の手すり",new Vector3(7.87f,2.25f,9.1f),new Vector3(0.065f,0.065f,7.25f),woodDark,false);
+            var rail=Geo.Box(stairRoot,"階段の手すり",new Vector3(7.87f,2.25f,9.1f),new Vector3(0.065f,0.065f,7.25f),woodDark,false);
             rail.transform.rotation=Quaternion.Euler(-24.44f,0,0);
+            h.stairRenderers = stairRoot.GetComponentsInChildren<Renderer>();
             Geo.BoxMM(root,"2階寝室の床",0f,2.8f,7f,6f,3f,14f,woodFloorDark);
             Geo.BoxMM(root,"2階書斎の床",8f,2.8f,7f,16f,3f,14f,woodFloorDark);
             Geo.BoxMM(root,"2階踊り場の床",6f,2.8f,12.4f,8f,3f,14f,woodFloorDark);
@@ -1192,7 +1196,7 @@ namespace MidnightCalico
             z.Add(new CamZone("和室", 0, 7, 6, 10.5f, new Vector3(5.55f, 2.2f, 13.55f), new Vector3(2.5f, 0.4f, 8.6f), 0.3f));
             z.Add(new CamZone("和室", 0, 10.5f, 6, 14, new Vector3(0.45f, 2.2f, 7.45f), new Vector3(3.0f, 0.4f, 12.5f), 0.3f));
             z.Add(new CamZone("廊下", 6, -1, 8, 4.5f, new Vector3(6.35f, 2.3f, 5.6f), new Vector3(7.2f, 0.4f, 1.0f), 0.25f, 60f));
-            z.Add(new CamZone("廊下", 6, 4.5f, 8, 9.5f, new Vector3(7.65f, 2.3f, 13.6f), new Vector3(7.0f, 0.4f, 5.0f), 0.25f, 50f));
+            z.Add(new CamZone("廊下", 6, 4.5f, 8, 9.5f, new Vector3(6.35f, 2.3f, 13.6f), new Vector3(6.4f, 0.4f, 5.0f), 0.25f, 50f));
             z.Add(new CamZone("廊下", 6, 9.5f, 8, 14, new Vector3(6.35f, 2.3f, 4.6f), new Vector3(7.0f, 0.4f, 13.0f), 0.25f, 45f));
             z.Add(new CamZone("キッチン", 8, 0, 12, 5, new Vector3(15.55f, 2.3f, 4.6f), new Vector3(10.0f, 0.4f, 1.8f), 0.35f));
             z.Add(new CamZone("キッチン", 12, 0, 16, 5, new Vector3(8.45f, 2.3f, 0.45f), new Vector3(14.0f, 0.4f, 3.0f), 0.35f));

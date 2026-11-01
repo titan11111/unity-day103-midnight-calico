@@ -33,12 +33,14 @@ namespace MidnightCalico
         public float fear;
         public bool megaPurr;        // カリカリを食べて「めっちゃゴロゴロ」中（喉の振動を体の揺れで表現）
 
-        public void Build(bool newcomer = false)
+        public void Build(bool newcomer = false, bool kitten = false)
         {
             var fur = newcomer ? Mat.WithNormal(Mat.Make("newCatFur",Color.white,Tex.Fabric(new Color(0.42f,0.48f,0.55f),0.18f),0.12f),3.5f) : Mat.WithNormal(Mat.Make("calicoFur", Color.white, Tex.Calico(), 0.12f, 0f, 1f, 1f), 3.5f);   // 毛並みの凹凸
+            if (kitten) fur = Mat.Make("kittenGinger", new Color(0.92f, 0.56f, 0.24f), null, 0.12f);
             var white = Mat.Make("catWhite", new Color(0.95f, 0.94f, 0.9f), null, 0.08f);
             var black = Mat.Make("catBlack", new Color(0.09f, 0.08f, 0.07f), null, 0.1f);
             var orange = Mat.Make("catOrange", new Color(0.85f, 0.5f, 0.2f), null, 0.08f);
+            if (kitten) black = orange;
             if(newcomer) orange = Mat.Make("newCatGrey",new Color(0.42f,0.48f,0.55f),null,0.08f);
             var pink = Mat.Make("catPink", new Color(0.92f, 0.6f, 0.62f), null, 0.4f);
             eyeMat = new Material(Mat.Make("catEyeBase", new Color(0.75f, 0.78f, 0.25f), null, 0.95f));
@@ -65,6 +67,7 @@ namespace MidnightCalico
             // 首・頭
             neck = Geo.Pivot(body, "neck", new Vector3(0, 0.07f, 0.19f));
             head = Geo.Pivot(neck, "head", new Vector3(0, 0.035f, 0.035f));
+            if (kitten) head.localScale = Vector3.one * 1.18f;
             Geo.Sph(head, "skull", Vector3.zero, new Vector3(0.14f, 0.12f, 0.13f), fur);
             Geo.Sph(head, "cheekL", new Vector3(-0.035f, -0.025f, 0.03f), new Vector3(0.07f, 0.06f, 0.07f), white);
             Geo.Sph(head, "cheekR", new Vector3(0.035f, -0.025f, 0.03f), new Vector3(0.07f, 0.06f, 0.07f), white);
