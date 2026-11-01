@@ -3,6 +3,6 @@ namespace MidnightCalico
 {
     public static class BuildInfo
     {
-        public const string Id = "day103-0b7c87dec941";
+        public const string Id = "day103-0d575299c3e4";
     }
 }

@@ -138,6 +138,7 @@ namespace MidnightCalico.EditorTools
                     else if (cmd == "verify") Run();
                     else if (cmd == "play" && !EditorApplication.isPlayingOrWillChangePlaymode) MidnightCalicoSetup.OpenAndPlay();
                     else if (cmd == "build" && !EditorApplication.isPlayingOrWillChangePlaymode) MidnightCalicoSetup.BuildWebGL();
+                    else if (cmd == "cat-preview" && !EditorApplication.isPlayingOrWillChangePlaymode) CharacterPreview.RenderCats();
                     else if (cmd == "preview" && !EditorApplication.isPlayingOrWillChangePlaymode) CharacterPreview.Render();
                 }
                 catch (Exception e) { Debug.LogException(e); }
@@ -156,6 +157,7 @@ namespace MidnightCalico.EditorTools
                     gm.ui.SetTouchVisible(true); GameInput.SetRunMode(true);
                     VerifyCatSetup(gm);
                     gm.ui.SendMessage("StartIntro"); gm.ui.SendMessage("BeginFromIntro");
+                    VerifyCatAnatomy(gm);
                     VerifyStairVisibility(gm);
                     Require(gm.kitten != null && gm.kitten.IsMale && gm.kitten.model != null && gm.kitten.transform.localScale.x < 0.6f,
                         "Small male kitten exists independently from Mike and timid newcomer");
@@ -302,16 +304,17 @@ namespace MidnightCalico.EditorTools
                     gm.player.HitByFallingProp();
                     Require(gm.player.hp == Mathf.Max(1,SessionState.GetInt("mc.shelterHp",5)-1),"Exposed player takes falling prop damage");
                     gm.newcomer.enabled=false;
-                    PlacePlayer(gm,new Vector3(7.33f,0.02f,5.4f),Quaternion.identity);
+                    PlacePlayer(gm,new Vector3(HouseBuilder.StairCenterX,0.02f,15.2f),Quaternion.identity);
                     gm.player.cameraRelative=false; GameInput.stick=Vector2.up;
                     step++; due=EditorApplication.timeSinceStartup+5.5;
                 }
                 else if (step == 16)
                 {
                     GameInput.ClearTouches();
-                    Require(gm.player.transform.position.y > 2.85f && gm.player.transform.position.z > 12.4f,"Player walks up all physical stair steps to second floor");
-                    Require(gm.house.RoomName(gm.player.transform.position)=="2階 踊り場","Room detection distinguishes upstairs landing");
-                    Require(FixedCameraSystem.I.current!=null && FixedCameraSystem.I.current.room=="2階 踊り場","Camera changes to upstairs landing on actual ascent");
+                    Require(gm.player.transform.position.y > 2.85f && gm.player.transform.position.z > HouseBuilder.StairEndZ,"Player walks up all physical stair steps to second floor");
+                    Require(gm.house.RoomName(gm.player.transform.position)=="2階 階段踊り場","Room detection distinguishes upstairs landing");
+                    Require(FixedCameraSystem.I.current!=null && FixedCameraSystem.I.current.room=="2階 階段踊り場","Camera changes to upstairs landing on actual ascent");
+                    VerifyUpperReturnRoute(gm);
                     PlacePlayer(gm,new Vector3(7.33f,3.02f,13.05f),Quaternion.Euler(0,90,0));
                     GameInput.stick=Vector2.up;
                     step++; due=EditorApplication.timeSinceStartup+1.2;
@@ -321,14 +324,14 @@ namespace MidnightCalico.EditorTools
                     GameInput.ClearTouches();
                     Require(gm.house.RoomName(gm.player.transform.position)=="2階 書斎","Upstairs study is reachable through physical doorway");
                     VerifyNewcomerAndFaces(gm);
-                    PlacePlayer(gm,new Vector3(7.33f,3.02f,12.7f),Quaternion.Euler(0,180,0));
+                    PlacePlayer(gm,new Vector3(HouseBuilder.StairCenterX,3.02f,22.5f),Quaternion.Euler(0,180,0));
                     gm.player.cameraRelative=false; GameInput.stick=Vector2.up;
                     step++; due=EditorApplication.timeSinceStartup+5.7;
                 }
                 else if (step == 18)
                 {
                     GameInput.ClearTouches();
-                    Require(gm.player.transform.position.y < 0.2f && gm.player.transform.position.z < 5.8f,"Player walks back down stairs to ground floor without teleport");
+                    Require(gm.player.transform.position.y < 0.2f && gm.player.transform.position.z < HouseBuilder.StairStartZ,"Player walks back down stairs to ground floor without teleport");
                     Require(gm.kitten.DistanceTravelled > 0.5f && gm.kitten.transform.position.y < 0.1f &&
                         gm.kitten.transform.position.x > 0.5f && gm.kitten.transform.position.x < 5.5f &&
                         gm.kitten.transform.position.z > 0.5f && gm.kitten.transform.position.z < 6.5f,
@@ -388,11 +391,75 @@ namespace MidnightCalico.EditorTools
             gm.player.transform.SetPositionAndRotation(position,rotation);cc.enabled=true;
             Physics.SyncTransforms(); FixedCameraSystem.I.CancelShot();
         }
+        static void VerifyCatAnatomy(GameManager gm)
+        {
+            var model=gm.cat.model;
+            var torso=model.transform.Find("body/torso");
+            Require(torso != null && torso.GetComponent<MeshFilter>().sharedMesh.vertexCount==725,"Cat torso is one continuous feline mesh");
+            Transform paw=model.transform.Find("body/leg0/knee/foot");
+            Require(paw!=null,"Cat has articulated paws separate from lower legs");
+            var before=paw.position;model.speed=1.1f;model.pose=CatPose.Stand;
+            for(int i=0;i<10;i++) model.Animate(1f/60f);
+            Require(Vector3.Distance(before,paw.position)>0.008f,"Cat walk moves articulated paw through support and swing phases");
+            var tail=model.transform.Find("body/tailRoot");
+            Require(tail != null && tail.localPosition.z > -0.23f,"Tail is connected to the rump without a floating gap");
+            model.speed=0f;model.puffed=true;
+            for(int frame=0;frame<120;frame++)model.Animate(1f/60f);
+            var tip=tail.GetComponentsInChildren<Transform>().First(t=>t.name=="tail7");
+            Require(tip.lossyScale.x<2.1f && tip.lossyScale.y<2.1f,"Startled tail thickness does not multiply across nested joints");
+            model.puffed=false;for(int frame=0;frame<120;frame++)model.Animate(1f/60f);
+        }
+        static void VerifyUpperReturnRoute(GameManager gm)
+        {
+            var cc=gm.player.GetComponent<CharacterController>();
+            Vector3[] route={ new Vector3(7.1f,3.02f,gm.player.transform.position.z),new Vector3(7.1f,3.02f,13.1f) };
+            for(int i=0;i<route.Length;i++)
+            {
+                for(int n=0;n<300;n++)
+                {
+                    Vector3 d=route[i]-gm.player.transform.position;d.y=0;
+                    if(d.magnitude<0.06f) break;
+                    cc.Move(Vector3.ClampMagnitude(d,0.05f)+Vector3.down*0.05f);
+                }
+                Vector3 gap=route[i]-gm.player.transform.position;gap.y=0;
+                Require(gap.magnitude<0.12f && gm.player.transform.position.y>2.85f,
+                    "Upstairs return passage physically connects new stairs to existing second floor segment "+i);
+            }
+        }
+        static void VerifyGroundFloorRoutes(GameManager gm)
+        {
+            var cc = gm.player.GetComponent<CharacterController>();
+            // 実際のプレイヤーカプセルを細かく動かし、入口から北側ホールまでの通路を検査する。
+            Vector3[] route = { new Vector3(7f,0.02f,2.4f), new Vector3(7f,0.02f,14.8f),
+                new Vector3(HouseBuilder.StairCenterX,0.02f,14.8f), new Vector3(HouseBuilder.StairCenterX,0.02f,15.2f) };
+            PlacePlayer(gm,route[0],Quaternion.identity);
+            for (int i=1;i<route.Length;i++)
+            {
+                for (int n=0;n<350;n++)
+                {
+                    Vector3 d=route[i]-gm.player.transform.position; d.y=0;
+                    if (d.magnitude < 0.06f) break;
+                    cc.Move(Vector3.ClampMagnitude(d,0.05f)+Vector3.down*0.05f);
+                }
+                Vector3 gap=route[i]-gm.player.transform.position;gap.y=0;
+                Require(gap.magnitude<0.12f && gm.player.transform.position.y<0.2f,"Ground-floor entrance to stair hall segment "+i+" is physically clear");
+            }
+            foreach (float z in new[] { 6f, 8.1f, 11.8f })
+            {
+                PlacePlayer(gm,new Vector3(7f,0.02f,z),Quaternion.identity);
+                for(int n=0;n<32;n++) cc.Move(new Vector3(0.05f,-0.05f,0));
+                Require(gm.player.transform.position.x>8.35f && gm.player.transform.position.y<0.2f,
+                    "Ground-floor east doorway at z="+z+" is reachable without climbing stairs");
+            }
+            Require(gm.house.stairRenderers.Where(r=>r.GetComponent<Collider>()!=null).All(r=>r.bounds.min.z>=HouseBuilder.StairStartZ-0.01f),
+                "All physical stairs are outside the original ground-floor corridor");
+        }
         static void VerifyStairVisibility(GameManager gm)
         {
             var system = FixedCameraSystem.I;
             var position = gm.player.transform.position;
             var rotation = gm.player.transform.rotation;
+            VerifyGroundFloorRoutes(gm);
             Require(gm.house.stairRenderers != null && gm.house.stairRenderers.Length == 51, "All steps, stair edges and rails are registered for cutaway rendering");
             foreach (float z in new[] { 6.5f, 10.5f })
             {
@@ -402,7 +469,7 @@ namespace MidnightCalico.EditorTools
                 Require(gm.house.stairRenderers.Where(r => r.GetComponent<Collider>() != null).All(r => r.GetComponent<Collider>().enabled), "Hidden staircase preserves physical colliders");
                 CaptureCamera(system.cam, "Builds/ControlVerification/corridor-" + z + ".png");
             }
-            PlacePlayer(gm, new Vector3(7.3f, 1.5f, 9f), Quaternion.identity);
+            PlacePlayer(gm, new Vector3(HouseBuilder.StairCenterX, 1.5f, 18.8f), Quaternion.identity);
             system.SendMessage("LateUpdate");
             Require(system.current.room == "階段" && gm.house.stairRenderers.All(r => r.enabled), "Stair climbing camera restores steps and handrail");
             CaptureCamera(system.cam, "Builds/ControlVerification/stairs-visible.png");

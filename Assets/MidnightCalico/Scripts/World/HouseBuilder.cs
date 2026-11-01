@@ -86,34 +86,52 @@ namespace MidnightCalico
         }
 
         public const float UpperFloorY = 3f;
-        public static float StairHeight(float z) { return Mathf.Clamp01((z - 5.8f) / 6.6f) * UpperFloorY; }
+        public const float StairStartZ = 15.6f, StairEndZ = 22.2f, StairCenterX = 9.15f;
+        public static float StairHeight(float z) { return Mathf.Clamp01((z - StairStartZ) / 6.6f) * UpperFloorY; }
         static void BuildUpperFloor()
         {
-            // 既存廊下の奥に実際の段差でつながる階段。ワープではなくCharacterControllerで昇降。
-            h.rooms.Insert(0,new Room("階段",6.8f,5.8f,7.85f,12.4f) { stairs=true });
+            // 廊下と各部屋の出入口を空け、家の北側に独立した階段ホールを設ける。
+            h.rooms.Insert(0,new Room("階段",8.4f,StairStartZ,9.95f,StairEndZ) { stairs=true });
             h.rooms.Add(new Room("2階 寝室",0f,7f,6f,14f) { floorY=3f });
             h.rooms.Add(new Room("2階 書斎",8f,7f,16f,14f) { floorY=3f });
             h.rooms.Add(new Room("2階 踊り場",6f,12.4f,8f,14f) { floorY=3f });
+            h.rooms.Add(new Room("階段ホール",6f,14f,10f,15.6f));
+            h.rooms.Add(new Room("階段下通路",6f,15.6f,8.4f,23.8f));
+            h.rooms.Add(new Room("2階 渡り廊下",6f,14f,8.4f,22.2f) { floorY=3f });
+            h.rooms.Add(new Room("2階 階段踊り場",6f,22.2f,10f,23.8f) { floorY=3f });
+            Geo.BoxMM(root,"階段ホールの床",6f,-0.2f,14f,10f,0f,23.8f,woodFloorDark);
+            Geo.BoxMM(root,"2階渡り廊下の床",6f,2.8f,14f,8.25f,3f,22.2f,woodFloorDark);
+            Geo.BoxMM(root,"2階階段踊り場の床",6f,2.8f,22.2f,10f,3f,23.8f,woodFloorDark);
+            Geo.BoxMM(root,"階段ホール西壁",6f,0f,14f,6.12f,5.5f,23.8f,woodWhite);
+            Geo.BoxMM(root,"階段ホール東壁",9.95f,0f,14f,10.07f,5.5f,23.8f,woodWhite);
+            Geo.BoxMM(root,"階段ホール北壁",6f,0f,23.8f,10.07f,5.5f,23.92f,woodWhite);
+            Geo.BoxMM(root,"階段ホール南壁",8f,0f,14f,10.07f,5.5f,14.12f,woodWhite);
+            Geo.BoxMM(root,"階段ホール天井",6f,5.5f,14f,10.07f,5.6f,23.92f,ceilingMat,false);
+            // 渡り廊下の端から転落しないよう、通り幅を確保した腰壁を置く。
+            Geo.BoxMM(root,"渡り廊下の腰壁",8.2f,3f,15.7f,8.3f,3.9f,22.2f,woodLight);
+            AddLight(new Vector3(8.3f,5.15f,18.7f),new Color(1f,0.88f,0.7f),0.9f,9f);
             var stairRoot = new GameObject("階段（視界に合わせて表示）").transform;
             stairRoot.SetParent(root, false);
             for(int i=0;i<20;i++)
             {
-                float z=5.8f+i*0.33f;
-                Geo.BoxMM(stairRoot,"階段の踏板"+i,6.85f,-0.05f,z,7.8f,(i+1)*0.15f,z+0.33f,woodLight);
-                Geo.BoxMM(stairRoot,"階段の鼻先"+i,6.85f,(i+1)*0.15f-0.025f,z,7.8f,(i+1)*0.15f,z+0.035f,woodDark,false);
+                float z=StairStartZ+i*0.33f;
+                Geo.BoxMM(stairRoot,"階段の踏板"+i,8.5f,-0.05f,z,9.8f,(i+1)*0.15f,z+0.33f,woodLight);
+                Geo.BoxMM(stairRoot,"階段の鼻先"+i,8.5f,(i+1)*0.15f-0.025f,z,9.8f,(i+1)*0.15f,z+0.035f,woodDark,false);
                 if(i%2==0)
                 {
                     float y=(i+1)*0.15f;
-                    Geo.Cyl(stairRoot,"階段手すり支柱",new Vector3(7.87f,y+0.38f,z+0.16f),0.025f,0.76f,woodDark,false);
+                    Geo.Cyl(stairRoot,"階段手すり支柱",new Vector3(9.87f,y+0.38f,z+0.16f),0.025f,0.76f,woodDark,false);
                 }
             }
-            var rail=Geo.Box(stairRoot,"階段の手すり",new Vector3(7.87f,2.25f,9.1f),new Vector3(0.065f,0.065f,7.25f),woodDark,false);
+            var rail=Geo.Box(stairRoot,"階段の手すり",new Vector3(9.87f,2.25f,18.9f),new Vector3(0.065f,0.065f,7.25f),woodDark,false);
             rail.transform.rotation=Quaternion.Euler(-24.44f,0,0);
             h.stairRenderers = stairRoot.GetComponentsInChildren<Renderer>();
             Geo.BoxMM(root,"2階寝室の床",0f,2.8f,7f,6f,3f,14f,woodFloorDark);
             Geo.BoxMM(root,"2階書斎の床",8f,2.8f,7f,16f,3f,14f,woodFloorDark);
             Geo.BoxMM(root,"2階踊り場の床",6f,2.8f,12.4f,8f,3f,14f,woodFloorDark);
-            Geo.BoxMM(root,"2階北壁",0f,3f,13.92f,16f,5.5f,14f,woodWhite);
+            Geo.BoxMM(root,"2階北壁西",0f,3f,13.92f,6.2f,5.5f,14f,woodWhite);
+            Geo.BoxMM(root,"2階北壁東",7.8f,3f,13.92f,16f,5.5f,14f,woodWhite);
+            Geo.BoxMM(root,"2階北出入口の上枠",6.2f,5.05f,13.92f,7.8f,5.5f,14f,woodWhite);
             Geo.BoxMM(root,"2階西壁",0f,3f,7f,0.12f,5.5f,14f,woodWhite);
             Geo.BoxMM(root,"2階東壁",15.88f,3f,7f,16f,5.5f,14f,woodWhite);
             Geo.BoxMM(root,"2階寝室南壁",0f,3f,7f,6f,5.5f,7.12f,woodWhite);
@@ -141,7 +159,11 @@ namespace MidnightCalico
             AddLight(new Vector3(12f,5.1f,11f),new Color(1f,0.85f,0.65f),0.8f,7f);
             Search("2階の机",new Vector3(14.4f,3f,8.7f),ItemId.Bandage,1,"書斎の机に絆創膏がある。奥で新入り猫が小さく震えている。");
             Search("2階のベッド",new Vector3(3.5f,3f,11f),ItemId.None,0,"寝室のベッド。廊下の階段で1階へ戻れる。");
-            h.zones.Insert(0,new CamZone("階段",6.7f,5.55f,7.95f,12.5f,new Vector3(7f,5.3f,4.9f),new Vector3(7f,1.8f,9.5f),0.45f,58f) { minY=-0.4f,maxY=3.4f,priority=10 });
+            h.zones.Insert(0,new CamZone("階段",8.4f,15.3f,9.95f,22.3f,new Vector3(9.15f,5.3f,14.8f),new Vector3(9.15f,1.8f,19.3f),0.45f,58f) { minY=-0.4f,maxY=3.4f,priority=10 });
+            h.zones.Add(new CamZone("階段ホール",6f,14f,10f,15.7f,new Vector3(9.6f,2.25f,14.4f),new Vector3(7.5f,1f,15.3f),0.4f) { priority=5 });
+            h.zones.Add(new CamZone("階段下通路",6f,15.7f,8.4f,23.8f,new Vector3(7f,2.3f,15.9f),new Vector3(7f,1f,20f),0.4f) { priority=5 });
+            h.zones.Add(new CamZone("2階 渡り廊下",6f,14f,8.4f,22.2f,new Vector3(6.5f,5.2f,22.8f),new Vector3(7.1f,3.7f,17.6f),0.35f) { minY=2.6f,maxY=5.7f,priority=20 });
+            h.zones.Add(new CamZone("2階 階段踊り場",6f,22.2f,10f,23.8f,new Vector3(7f,5.2f,20.6f),new Vector3(8.4f,3.7f,22.9f),0.35f) { minY=2.6f,maxY=5.7f,priority=20 });
             h.zones.Add(new CamZone("2階 踊り場",6f,12.4f,8f,14f,new Vector3(7f,5.2f,10.5f),new Vector3(7f,3.7f,13.2f),0.25f) { minY=2.6f,maxY=5.7f,priority=20 });
             h.zones.Add(new CamZone("2階 寝室",0f,7f,6f,14f,new Vector3(5.45f,5.25f,13.45f),new Vector3(2.6f,3.6f,10.4f),0.25f) { minY=2.6f,maxY=5.7f,priority=20 });
             h.zones.Add(new CamZone("2階 書斎",8f,7f,16f,14f,new Vector3(8.5f,5.2f,13.45f),new Vector3(13.8f,3.45f,11.8f),0.3f) { minY=2.6f,maxY=5.7f,priority=20 });
@@ -243,7 +265,7 @@ namespace MidnightCalico
             // 階段の吹抜けを残す。天井は視界用で、当たり判定は2階の床が担当。
             Geo.BoxMM(root, "天井_西", 0f,H,0f,6.15f,H+0.1f,14f,ceilingMat,false);
             Geo.BoxMM(root, "天井_東", 7.85f,H,0f,16f,H+0.1f,14f,ceilingMat,false);
-            Geo.BoxMM(root, "天井_廊下南", 6.15f,H,0f,7.85f,H+0.1f,5.8f,ceilingMat,false);
+            Geo.BoxMM(root, "天井_廊下南", 6.15f,H,0f,7.85f,H+0.1f,12.4f,ceilingMat,false);
             Geo.BoxMM(root, "天井_踊り場", 6.15f,H,12.4f,7.85f,H+0.1f,14f,ceilingMat,false);
             // 外の地面（窓の外が真っ黒にならないように）
             Geo.BoxMM(root, "外構", -10f, -0.5f, -10f, 26f, -0.4f, 24f, extMat, false);
@@ -256,7 +278,7 @@ namespace MidnightCalico
             WallLine(true, 0f, 0f, 14f);
             WallLine(true, 16f, 0f, 14f);
             WallLine(false, 0f, 0f, 16f, 6.3f, 7.7f);
-            WallLine(false, 14f, 0f, 16f);
+            WallLine(false, 14f, 0f, 16f, 6.2f, 7.8f);
             // 内壁
             WallLine(true, 6f, 0f, 14f, 2.6f, 4.0f, 10f, 11f);
             WallLine(true, 8f, 0f, 14f, 2f, 3.2f, 5.5f, 6.5f, 7.6f, 8.6f, 11.2f, 12.4f);
@@ -946,8 +968,8 @@ namespace MidnightCalico
             Geo.BoxMM(root, "柱時計の振子窓", 7.798f, 1.16f, 4.23f, 7.81f, 1.49f, 4.47f, blackPl, false);
             Geo.Box(root, "真鍮の振子軸", new Vector3(7.785f, 1.37f, 4.35f), new Vector3(0.012f, 0.23f, 0.014f), metal, false);
             Geo.Cyl(root, "真鍮の振子", new Vector3(7.775f, 1.24f, 4.35f), 0.06f, 0.012f, metal, false).transform.localRotation = Quaternion.Euler(0, 0, 90);
-            // 突き当たりの小窓
-            Window(new Vector3(7f, 1.5f, 14f), Vector3.back, 0.8f, 0.6f, false, true);
+            // 小窓も新しい階段ホールの外壁へ移し、廊下の開口部を覆わない。
+            Window(new Vector3(7f, 1.5f, 23.9f), Vector3.back, 0.8f, 0.6f, false, true);
             // 照明（ちらつく）
             Geo.Cyl(root, "廊下の照明", new Vector3(7f, H - 0.03f, 6.5f), 0.15f, 0.04f, shade, false);
             AddLight(new Vector3(7f, 2.2f, 6.5f), new Color(1f, 0.85f, 0.65f), 0.75f, 5.5f, true, 0.85f);

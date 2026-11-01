@@ -14,6 +14,9 @@ namespace MidnightCalico
         Transform body, chest, haunch, neck, head, earL, earR, tailRoot;
         readonly Transform[] legUpper = new Transform[4];
         readonly Transform[] legLower = new Transform[4];
+        readonly Transform[] paws = new Transform[4];
+        static Mesh torsoMesh, earMesh;
+        static Texture2D softCalico;
         readonly List<Transform> tail = new List<Transform>();
         Material eyeMat;
         readonly Dictionary<Renderer, string> originalFurNames = new Dictionary<Renderer, string>();
@@ -36,7 +39,7 @@ namespace MidnightCalico
 
         public void Build(bool newcomer = false, bool kitten = false)
         {
-            var fur = newcomer ? Mat.WithNormal(Mat.Make("newCatFur",Color.white,Tex.Fabric(new Color(0.42f,0.48f,0.55f),0.18f),0.12f),3.5f) : Mat.WithNormal(Mat.Make("calicoFur", Color.white, Tex.Calico(), 0.12f, 0f, 1f, 1f), 3.5f);   // 毛並みの凹凸
+            var fur = newcomer ? Mat.Make("newCatFurSoft",new Color(0.42f,0.48f,0.55f),null,0.08f) : Mat.Make("calicoFurSoft",Color.white,SoftCalico(),0.08f);
             if (kitten) fur = Mat.Make("kittenGinger", new Color(0.92f, 0.56f, 0.24f), null, 0.12f);
             var white = Mat.Make("catWhite", new Color(0.95f, 0.94f, 0.9f), null, 0.08f);
             var black = Mat.Make("catBlack", new Color(0.09f, 0.08f, 0.07f), null, 0.1f);
@@ -50,64 +53,49 @@ namespace MidnightCalico
             var pupil = Mat.Make("catPupil", new Color(0.02f, 0.02f, 0.02f), null, 0.95f);
 
             body = Geo.Pivot(transform, "body", bodyBase);
-            // 胴（胸・腰・お腹）
-            Geo.Sph(body, "torso", new Vector3(0, 0.01f, -0.01f), new Vector3(0.17f, 0.155f, 0.36f), fur);
-            chest = Geo.Pivot(body, "chestP", new Vector3(0, 0.01f, 0.12f));
-            Geo.Sph(chest, "chest", Vector3.zero, new Vector3(0.16f, 0.17f, 0.17f), fur);
-            Geo.Sph(chest, "bib", new Vector3(0, -0.03f, 0.05f), new Vector3(0.11f, 0.12f, 0.09f), white);
-            haunch = Geo.Pivot(body, "haunchP", new Vector3(0, 0.01f, -0.14f));
-            Geo.Sph(haunch, "haunch", Vector3.zero, new Vector3(0.17f, 0.17f, 0.19f), fur);
-            Geo.Sph(body, "belly", new Vector3(0, -0.05f, -0.02f), new Vector3(0.13f, 0.08f, 0.28f), white);
-            // 毛のふくらみ（体の輪郭をなめらかにつなぐ）
-            Geo.Sph(body, "back", new Vector3(0, 0.055f, -0.02f), new Vector3(0.13f, 0.07f, 0.34f), fur);
-            Geo.Sph(body, "neckFill", new Vector3(0, 0.055f, 0.17f), new Vector3(0.12f, 0.12f, 0.12f), fur);
-            Geo.Sph(chest, "ruff", new Vector3(0, -0.01f, 0.07f), new Vector3(0.12f, 0.1f, 0.07f), white);
-            Geo.Sph(haunch, "fluffL", new Vector3(-0.06f, -0.03f, -0.03f), new Vector3(0.07f, 0.11f, 0.13f), fur);
-            Geo.Sph(haunch, "fluffR", new Vector3(0.06f, -0.03f, -0.03f), new Vector3(0.07f, 0.11f, 0.13f), fur);
-
+            // 一枚の連続した輪郭で胸から腰までつなぎ、球体の継ぎ目をなくす。
+            if (torsoMesh == null) torsoMesh = BuildTorsoMesh();
+            Geo.MeshObj(body,"torso",torsoMesh,Vector3.zero,Vector3.zero,Vector3.one,fur);
+            chest = Geo.Pivot(body,"chestP",new Vector3(0,0.01f,0.115f));
+            haunch = Geo.Pivot(body,"haunchP",new Vector3(0,0,-0.13f));
             // 首・頭
-            neck = Geo.Pivot(body, "neck", new Vector3(0, 0.07f, 0.19f));
-            head = Geo.Pivot(neck, "head", new Vector3(0, 0.035f, 0.035f));
+            neck = Geo.Pivot(body, "neck", new Vector3(0, 0.045f, 0.155f));
+            head = Geo.Pivot(neck, "head", new Vector3(0, 0.034f, 0.034f));
             if (kitten) head.localScale = Vector3.one * 1.18f;
-            Geo.Sph(head, "skull", Vector3.zero, new Vector3(0.14f, 0.12f, 0.13f), fur);
-            Geo.Sph(head, "cheekL", new Vector3(-0.035f, -0.025f, 0.03f), new Vector3(0.07f, 0.06f, 0.07f), white);
-            Geo.Sph(head, "cheekR", new Vector3(0.035f, -0.025f, 0.03f), new Vector3(0.07f, 0.06f, 0.07f), white);
-            Geo.Sph(head, "muzzle", new Vector3(0, -0.028f, 0.058f), new Vector3(0.055f, 0.04f, 0.045f), white);
-            Geo.Sph(head, "chin", new Vector3(0, -0.048f, 0.045f), new Vector3(0.035f, 0.025f, 0.035f), white);
-            Geo.Sph(head, "nose", new Vector3(0, -0.012f, 0.079f), new Vector3(0.018f, 0.012f, 0.012f), pink);
-            Geo.Sph(head, "blaze", new Vector3(0, 0.02f, 0.055f), new Vector3(0.03f, 0.06f, 0.03f), white);
-            Geo.Sph(head, "patchO", new Vector3(-0.04f, 0.035f, 0.02f), new Vector3(0.07f, 0.06f, 0.08f), orange);
-            Geo.Sph(head, "patchB", new Vector3(0.04f, 0.035f, 0.02f), new Vector3(0.07f, 0.06f, 0.08f), black);
+            Geo.Sph(head, "skull", Vector3.zero, new Vector3(0.135f, 0.116f, 0.125f), fur);
+            Geo.Sph(head,"muzzleL",new Vector3(-0.014f,-0.025f,0.047f),new Vector3(0.034f,0.028f,0.035f),white);
+            Geo.Sph(head,"muzzleR",new Vector3(0.014f,-0.025f,0.047f),new Vector3(0.034f,0.028f,0.035f),white);
+            Geo.Sph(head, "nose", new Vector3(0, -0.017f, 0.066f), new Vector3(0.013f, 0.008f, 0.008f), pink);
             // 目（懐中電灯を当てると光る）
             var eyes = new List<Renderer>();
             for (int s = -1; s <= 1; s += 2)
             {
-                var e = Geo.Sph(head, "eye", new Vector3(s * 0.03f, 0.012f, 0.066f), new Vector3(0.026f, 0.024f, 0.016f), eyeMat);
+                var e = Geo.Sph(head, "eye", new Vector3(s * 0.032f, 0.009f, 0.054f), new Vector3(0.024f, 0.015f, 0.009f), eyeMat);
                 e.GetComponent<Renderer>().sharedMaterial = eyeMat;
                 eyes.Add(e.GetComponent<Renderer>());
-                var pp = Geo.Sph(head, "pupil", new Vector3(s * 0.03f, 0.012f, 0.0745f), new Vector3(0.007f, 0.02f, 0.004f), pupil);
+                var pp = Geo.Sph(head, "pupil", new Vector3(s * 0.032f, 0.009f, 0.0587f), new Vector3(0.005f, 0.013f, 0.002f), pupil);
                 pupils.Add(pp.transform);
                 // 目のハイライト
-                var hl = Geo.Sph(head, "catchlight", new Vector3(s * 0.03f + 0.005f, 0.019f, 0.076f), Vector3.one * 0.004f, Mat.Emissive("catchlight", Color.white, Color.white * 0.8f));
+                var hl = Geo.Sph(head, "catchlight", new Vector3(s * 0.032f + 0.004f, 0.013f, 0.060f), Vector3.one * 0.002f, Mat.Emissive("catchlight", Color.white, Color.white * 0.8f));
                 hl.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             }
             eyeRenderers = eyes.ToArray();
             // 頬の毛・眉のひげ
-            Geo.Sph(head, "cheekFurL", new Vector3(-0.062f, -0.02f, 0.0f), new Vector3(0.04f, 0.05f, 0.06f), white);
-            Geo.Sph(head, "cheekFurR", new Vector3(0.062f, -0.02f, 0.0f), new Vector3(0.04f, 0.05f, 0.06f), white);
             // 耳
-            earL = Geo.Pivot(head, "earL", new Vector3(-0.042f, 0.05f, 0.0f));
-            earR = Geo.Pivot(head, "earR", new Vector3(0.042f, 0.05f, 0.0f));
-            Geo.MeshObj(earL, "ear", Geo.Pyramid(), Vector3.zero, Vector3.zero, new Vector3(0.05f, 0.055f, 0.02f), orange);
-            Geo.MeshObj(earL, "earIn", Geo.Pyramid(), new Vector3(0, 0.004f, 0.006f), Vector3.zero, new Vector3(0.032f, 0.04f, 0.01f), pink);
-            Geo.MeshObj(earR, "ear", Geo.Pyramid(), Vector3.zero, Vector3.zero, new Vector3(0.05f, 0.055f, 0.02f), black);
-            Geo.MeshObj(earR, "earIn", Geo.Pyramid(), new Vector3(0, 0.004f, 0.006f), Vector3.zero, new Vector3(0.032f, 0.04f, 0.01f), pink);
+            earL = Geo.Pivot(head, "earL", new Vector3(-0.043f, 0.037f, -0.005f));
+            earR = Geo.Pivot(head, "earR", new Vector3(0.043f, 0.037f, -0.005f));
+            if (earMesh == null) earMesh = BuildEarMesh();
+            foreach (var ear in new[] { earL, earR })
+            {
+                Geo.MeshObj(ear,"ear",earMesh,Vector3.zero,Vector3.zero,new Vector3(1f,0.8f,1f),fur);
+                Geo.MeshObj(ear,"earIn",earMesh,new Vector3(0,0.007f,0.006f),Vector3.zero,new Vector3(0.62f,0.56f,0.3f),pink);
+            }
             // ひげ
             var whisker = Mat.Make("whisker", new Color(0.95f, 0.95f, 0.95f), null, 0.6f);
             for (int s = -1; s <= 1; s += 2)
                 for (int k = 0; k < 3; k++)
                 {
-                    var w = Geo.Box(head, "whisker", new Vector3(s * 0.065f, -0.025f + k * 0.006f, 0.062f), new Vector3(0.09f, 0.0015f, 0.0015f), whisker, false);
+                    var w = Geo.Box(head, "whisker", new Vector3(s * 0.065f, -0.025f + k * 0.006f, 0.062f), new Vector3(0.065f, 0.0006f, 0.0006f), whisker, false);
                     w.transform.localRotation = Quaternion.Euler(0, s * (-15f + k * 6f), s * (8f - k * 8f));
                     w.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 }
@@ -119,27 +107,105 @@ namespace MidnightCalico
                 bool back = i >= 2;
                 var legMat = (i == 2) ? orange : (i == 3 ? fur : white);
                 legUpper[i] = Geo.Pivot(body, "leg" + i, hips[i]);
-                Geo.Sph(legUpper[i], "thigh", new Vector3(0, -0.045f, back ? -0.01f : 0f), back ? new Vector3(0.055f, 0.12f, 0.075f) : new Vector3(0.042f, 0.11f, 0.05f), legMat);
-                legLower[i] = Geo.Pivot(legUpper[i], "knee", new Vector3(0, -0.09f, back ? -0.02f : 0f));
-                Geo.Cyl(legLower[i], "shin", new Vector3(0, -0.04f, 0), 0.016f, 0.09f, white, false);
-                Geo.Sph(legLower[i], "paw", new Vector3(0, -0.085f, 0.012f), new Vector3(0.036f, 0.022f, 0.045f), white);
+                Geo.MeshObj(legUpper[i],"thigh",BuildLimbMesh(0.09f,back?0.031f:0.021f,0.017f),Vector3.zero,Vector3.zero,Vector3.one,legMat);
+                Geo.Sph(legUpper[i],"softElbow",new Vector3(0,-0.09f,0),new Vector3(0.035f,0.036f,0.038f),legMat);
+                legLower[i] = Geo.Pivot(legUpper[i],"knee",new Vector3(0,-0.09f,0));
+                Geo.MeshObj(legLower[i],"shin",BuildLimbMesh(0.085f,0.017f,0.012f),Vector3.zero,Vector3.zero,Vector3.one,white);
+                paws[i] = Geo.Pivot(legLower[i],"foot",new Vector3(0,-0.085f,0));
+                Geo.Sph(paws[i], "paw", new Vector3(0,0,0.008f),new Vector3(0.034f,0.024f,0.047f),white);
             }
 
-            // しっぽ（8節）
-            tailRoot = Geo.Pivot(body, "tailRoot", new Vector3(0, 0.05f, -0.3f));
-            Transform parent = tailRoot;
-            for (int i = 0; i < 8; i++)
+            // 一本の連続した先細りの尻尾を8関節で曲げる。
+            tailRoot=Geo.Pivot(body,"tailRoot",new Vector3(0,0.025f,-0.204f));
+            Transform parent=tailRoot;
+            for(int i=0;i<8;i++)
             {
-                var seg = Geo.Pivot(parent, "tail" + i, i == 0 ? Vector3.zero : new Vector3(0, 0, -0.042f));
-                float r = Mathf.Lerp(0.022f, 0.014f, i / 7f);
-                var tm = (i % 3 == 1) ? black : (i % 3 == 2 ? orange : fur);
-                var g = Geo.Sph(seg, "t", new Vector3(0, 0, -0.021f), new Vector3(r * 2f, r * 2f, 0.05f), tm);
-                g.name = "tailMesh";
-                tail.Add(seg);
-                parent = seg;
+                var seg=Geo.Pivot(parent,"tail"+i,i==0?Vector3.zero:new Vector3(0,0,-0.034f));
+                tail.Add(seg);parent=seg;
             }
+            BuildTailSurface(fur);
 
             foreach (var r in GetComponentsInChildren<Renderer>()) r.receiveShadows = true;
+        }
+
+        static Texture2D SoftCalico()
+        {
+            if(softCalico!=null)return softCalico;
+            const int width=256,height=128;softCalico=new Texture2D(width,height,TextureFormat.RGB24,true);softCalico.name="Soft broad calico patches";
+            var pixels=new Color[width*height];
+            for(int y=0;y<height;y++)for(int x=0;x<width;x++)
+            {
+                float u=x/(float)width,v=y/(float)height;
+                float orange=Mathf.Exp(-((u-0.23f)*(u-0.23f)/0.012f+(v-0.7f)*(v-0.7f)/0.09f));
+                float black=Mathf.Exp(-((u-0.72f)*(u-0.72f)/0.009f+(v-0.4f)*(v-0.4f)/0.055f));
+                Color c=new Color(0.92f,0.9f,0.84f);
+                c=Color.Lerp(c,new Color(0.77f,0.43f,0.18f),Mathf.SmoothStep(0,1,Mathf.InverseLerp(0.35f,0.48f,orange)));
+                c=Color.Lerp(c,new Color(0.12f,0.11f,0.1f),Mathf.SmoothStep(0,1,Mathf.InverseLerp(0.38f,0.51f,black)));
+                c*=0.97f+0.03f*Mathf.PerlinNoise(u*110f,v*30f);pixels[y*width+x]=c;
+            }
+            softCalico.SetPixels(pixels);softCalico.Apply();return softCalico;
+        }
+
+        static Mesh BuildLimbMesh(float length,float top,float bottom)
+        {
+            const int sides=12;var v=new Vector3[26];var uv=new Vector2[26];var tr=new List<int>();
+            for(int r=0;r<2;r++) for(int k=0;k<=sides;k++)
+            {
+                int n=r*13+k;float a=k*Mathf.PI*2/sides;float radius=r==0?top:bottom;
+                v[n]=new Vector3(Mathf.Cos(a)*radius,-r*length,Mathf.Sin(a)*radius);
+                uv[n]=new Vector2(k/(float)sides,r);
+                if(r==0 && k<sides){tr.Add(n);tr.Add(n+1);tr.Add(n+13);tr.Add(n+1);tr.Add(n+14);tr.Add(n+13);}
+            }
+            var m=new Mesh{name="Feline tapered limb"};m.vertices=v;m.uv=uv;m.triangles=tr.ToArray();m.RecalculateNormals();return m;
+        }
+        void BuildTailSurface(Material fur)
+        {
+            const int sides=12,rings=9;var v=new Vector3[rings*13];var uv=new Vector2[v.Length];var weights=new BoneWeight[v.Length];var tr=new List<int>();
+            for(int r=0;r<rings;r++) for(int k=0;k<=sides;k++)
+            {
+                int n=r*13+k;float a=k*Mathf.PI*2/sides;float radius=Mathf.Lerp(0.017f,0.003f,r/8f);
+                v[n]=new Vector3(Mathf.Cos(a)*radius,Mathf.Sin(a)*radius,-r*0.034f);uv[n]=new Vector2(k/(float)sides,r/8f);
+                weights[n]=new BoneWeight{boneIndex0=Mathf.Clamp(r,0,7),weight0=1f};
+                if(r<8 && k<sides){tr.Add(n);tr.Add(n+13);tr.Add(n+1);tr.Add(n+1);tr.Add(n+13);tr.Add(n+14);}
+            }
+            var binds=new Matrix4x4[8];for(int i=0;i<8;i++)binds[i]=tail[i].worldToLocalMatrix*tailRoot.localToWorldMatrix;
+            var m=new Mesh{name="Feline continuous tail"};m.vertices=v;m.uv=uv;m.triangles=tr.ToArray();m.boneWeights=weights;m.bindposes=binds;m.RecalculateNormals();m.RecalculateBounds();
+            var go=new GameObject("tailSurface");go.transform.SetParent(tailRoot,false);var skin=go.AddComponent<SkinnedMeshRenderer>();
+            skin.sharedMesh=m;skin.bones=tail.ToArray();skin.rootBone=tailRoot;skin.sharedMaterial=fur;skin.updateWhenOffscreen=true;
+        }
+
+        static Mesh BuildTorsoMesh()
+        {
+            float[] z={-0.235f,-0.21f,-0.16f,-0.08f,0.03f,0.115f,0.18f,0.215f};
+            float[] w={0.005f,0.045f,0.079f,0.068f,0.067f,0.076f,0.054f,0.012f};
+            float[] h={0.012f,0.06f,0.082f,0.067f,0.07f,0.086f,0.067f,0.02f};
+            const int sides=24, subdivisions=4;
+            int rings=(z.Length-1)*subdivisions+1;
+            var vertices=new Vector3[rings*(sides+1)];var uv=new Vector2[vertices.Length];
+            var triangles=new List<int>();
+            for(int r=0;r<rings;r++)
+            {
+                float f=r/(float)subdivisions;int a0=Mathf.Min(Mathf.FloorToInt(f),z.Length-2);float t=f-a0;
+                float smooth=t*t*(3f-2f*t);
+                float rw=Mathf.Lerp(w[a0],w[a0+1],smooth),rh=Mathf.Lerp(h[a0],h[a0+1],smooth);
+                float rz=Mathf.Lerp(z[a0],z[a0+1],t);
+                for(int k=0;k<=sides;k++)
+                {
+                    float a=k*Mathf.PI*2f/sides;int v=r*(sides+1)+k;
+                    vertices[v]=new Vector3(Mathf.Cos(a)*rw,0.005f+Mathf.Sin(a)*rh,rz);
+                    uv[v]=new Vector2(k/(float)sides,r/(float)(rings-1));
+                    if(r<rings-1 && k<sides)
+                    { int n=v+sides+1;triangles.Add(v);triangles.Add(v+1);triangles.Add(n);triangles.Add(v+1);triangles.Add(n+1);triangles.Add(n); }
+                }
+            }
+            var mesh=new Mesh{name="Feline continuous torso"};mesh.vertices=vertices;mesh.uv=uv;mesh.triangles=triangles.ToArray();mesh.RecalculateNormals();mesh.RecalculateBounds();return mesh;
+        }
+        static Mesh BuildEarMesh()
+        {
+            var m=new Mesh{name="Feline tapered ear"};
+            m.vertices=new[]{new Vector3(-0.024f,0,0.006f),new Vector3(0.024f,0,0.006f),new Vector3(0,0.061f,-0.009f),
+                new Vector3(-0.022f,0,-0.012f),new Vector3(0.022f,0,-0.012f),new Vector3(0,0.061f,-0.015f)};
+            m.triangles=new[]{0,1,2,5,4,3,0,2,3,3,2,5,1,4,2,2,4,5,0,3,1,1,3,4};m.RecalculateNormals();m.RecalculateBounds();return m;
         }
 
         // Only fur materials change; eyes, nose and whiskers retain their own materials.
@@ -149,7 +215,7 @@ namespace MidnightCalico
             var baseColor = coat == 1 ? new Color(0.92f, 0.56f, 0.24f) :
                 coat == 2 ? new Color(0.07f, 0.075f, 0.085f) :
                 coat == 4 ? new Color(0.42f, 0.48f, 0.55f) : new Color(0.95f, 0.94f, 0.9f);
-            var fur = coat == 0 ? Mat.WithNormal(Mat.Make("chosenCalico", Color.white, Tex.Calico(), 0.12f), 3.5f) : Mat.Make("chosenFur" + coat, baseColor, null, 0.12f);
+            var fur = coat == 0 ? Mat.Make("chosenCalicoSoft", Color.white, SoftCalico(), 0.08f) : Mat.Make("chosenFur" + coat, baseColor, null, 0.12f);
             var pale = Mat.Make("chosenPale" + coat, coat == 2 ? baseColor : new Color(0.95f, 0.94f, 0.9f), null, 0.08f);
             var patch = Mat.Make("chosenPatch" + coat, coat == 0 || coat == 1 ? new Color(0.85f, 0.5f, 0.2f) : baseColor, null, 0.08f);
             foreach (var r in GetComponentsInChildren<Renderer>(true))
@@ -164,11 +230,12 @@ namespace MidnightCalico
             if (head != null) head.localScale = Vector3.one * (age == 0 ? 1.18f : 1f);
         }
 
-        void LateUpdate()
+        void LateUpdate() { Animate(Time.deltaTime); }
+
+        public void Animate(float dt)
         {
-            float dt = Time.deltaTime;
-            if (body == null) return;
-            gait += dt * Mathf.Lerp(2.5f, 14f, Mathf.Clamp01(speed / 5f)) * (speed > 0.05f ? 1f : 0f) * Mathf.PI;
+            if (body == null || legUpper[0] == null || eyeRenderers == null) return;
+            gait += dt * Mathf.Max(0f,speed) / (speed > 2.5f ? 0.64f : 0.32f) * Mathf.PI * 2f;
             tailT += dt;
             blinkT -= dt;
 
@@ -181,12 +248,22 @@ namespace MidnightCalico
             {
                 float phase;
                 if (running) phase = gait + (i >= 2 ? Mathf.PI : 0f) + (i % 2 == 1 ? 0.35f : 0f);   // 跳ねるように走る
-                else phase = gait + ((i == 0 || i == 3) ? 0f : Mathf.PI);                         // 対角の脚が同時
-                float upper = 0f, lower = 0f;
+                else phase = gait + (i == 0 ? Mathf.PI * 0.5f : i == 1 ? Mathf.PI * 1.5f : i == 2 ? 0f : Mathf.PI);                         // 対角の脚が同時
+                float upper = i>=2 ? -24f : 6f, lower = i>=2 ? 46f : -12f;
                 if (moving)
                 {
-                    upper = Mathf.Sin(phase) * amp;
-                    lower = Mathf.Max(0f, -Mathf.Cos(phase)) * (i >= 2 ? -45f : 40f);
+                    float cycle = Mathf.Repeat(phase / (2f*Mathf.PI),1f);
+                    float stance = running ? 0.42f : 0.64f;
+                    float stride = running ? 0.13f : 0.075f;
+                    float swing = Mathf.Clamp01((cycle-stance)/(1f-stance));
+                    float z = cycle < stance ? Mathf.Lerp(stride,-stride,cycle/stance) : Mathf.Lerp(-stride,stride,swing);
+                    float lift = cycle < stance ? 0f : Mathf.Sin(swing*Mathf.PI)*(running?0.055f:0.028f);
+                    float y = -0.174f + lift;
+                    float distance = Mathf.Clamp(Mathf.Sqrt(y*y+z*z),0.025f,0.1748f);
+                    float bend = Mathf.Acos(Mathf.Clamp((distance*distance-0.09f*0.09f-0.085f*0.085f)/(2f*0.09f*0.085f),-1f,1f));
+                    float sign = i>=2 ? 1f : -1f;
+                    lower = sign*bend*Mathf.Rad2Deg;
+                    upper = (Mathf.Atan2(-z,-y)-Mathf.Atan2(0.085f*Mathf.Sin(sign*bend),0.09f+0.085f*Mathf.Cos(bend)))*Mathf.Rad2Deg;
                 }
                 switch (pose)
                 {
@@ -218,6 +295,7 @@ namespace MidnightCalico
                 }
                 legUpper[i].localRotation = Quaternion.Slerp(legUpper[i].localRotation, Quaternion.Euler(upper, 0, 0), 1f - Mathf.Exp(-dt * 18f));
                 legLower[i].localRotation = Quaternion.Slerp(legLower[i].localRotation, Quaternion.Euler(lower, 0, 0), 1f - Mathf.Exp(-dt * 18f));
+                if (paws[i] != null) paws[i].localRotation = Quaternion.Euler(-(Mathf.DeltaAngle(0,legUpper[i].localEulerAngles.x)+Mathf.DeltaAngle(0,legLower[i].localEulerAngles.x)),0,0);
             }
 
             // ── 胴体の姿勢 ──
@@ -225,8 +303,8 @@ namespace MidnightCalico
             Vector3 bRot = Vector3.zero;
             if (moving)
             {
-                bPos.y += Mathf.Abs(Mathf.Sin(gait)) * (running ? 0.035f : 0.008f);
-                bRot.x = running ? Mathf.Sin(gait) * 8f : 0f;
+                bPos.y += Mathf.Abs(Mathf.Sin(gait)) * (running ? 0.018f : 0.003f);
+                bRot.x = running ? Mathf.Sin(gait) * 4f : 0f;
             }
             switch (pose)
             {
@@ -295,7 +373,7 @@ namespace MidnightCalico
             float br = Mathf.Sin(breathT) * (moving ? 0.01f : 0.025f);
             // 「めっちゃゴロゴロ」中は喉の振動を小刻みな揺れで重ねる
             if (megaPurr) br += Mathf.Sin(Time.time * 42f) * 0.012f;
-            chest.localScale = new Vector3(1f + br, 1f + br, 1f);
+            chest.localScale = new Vector3(1f + br*0.35f, 1f + br*0.35f, 1f);
             // 首をかしげる（警戒・興味）
             float tiltTarget = (pose == CatPose.Crouch || pose == CatPose.Play) && !moving ? Mathf.Sin(tailT * 0.6f) * 14f : 0f;
             headTilt = Mathf.Lerp(headTilt, tiltTarget, 1f - Mathf.Exp(-dt * 3f));
@@ -320,7 +398,7 @@ namespace MidnightCalico
                 if (i >= tail.Count - 3) y += tipFlick * Mathf.Sin(tailT * 22f) * 30f;
                 tail[i].localRotation = Quaternion.Slerp(tail[i].localRotation, Quaternion.Euler(x, y, 0), 1f - Mathf.Exp(-dt * 10f));
                 float fat = puffed ? 1.9f : 1f;
-                tail[i].localScale = Vector3.Lerp(tail[i].localScale, new Vector3(fat, fat, 1f), 1f - Mathf.Exp(-dt * 8f));
+                tail[i].localScale = Vector3.Lerp(tail[i].localScale, new Vector3(i == 0 ? fat : 1f, i == 0 ? fat : 1f, 1f), 1f - Mathf.Exp(-dt * 8f));
             }
 
             if ((pose == CatPose.Hide || pose == CatPose.Crouch || pose == CatPose.Play) && Random.value < dt * 0.7f) tipFlick = 1f;
@@ -332,7 +410,7 @@ namespace MidnightCalico
             foreach (var p in pupils)
             {
                 var ps = p.localScale;
-                ps.x = Mathf.Lerp(ps.x, Mathf.Lerp(0.003f, 0.019f, dil), 1f - Mathf.Exp(-dt * 6f));
+                ps.x = Mathf.Lerp(ps.x, Mathf.Lerp(0.0025f, 0.011f, dil), 1f - Mathf.Exp(-dt * 6f));
                 p.localScale = ps;
             }
 
@@ -362,7 +440,7 @@ namespace MidnightCalico
             foreach (var r in eyeRenderers)
             {
                 var s = r.transform.localScale;
-                s.y = Mathf.Lerp(s.y, blink ? 0.003f : 0.024f, 1f - Mathf.Exp(-dt * 30f));
+                s.y = Mathf.Lerp(s.y, blink ? 0.001f : 0.015f, 1f - Mathf.Exp(-dt * 30f));
                 r.transform.localScale = s;
             }
             foreach (var p in pupils)

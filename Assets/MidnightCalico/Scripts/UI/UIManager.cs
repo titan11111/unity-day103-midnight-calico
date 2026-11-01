@@ -666,9 +666,9 @@ namespace MidnightCalico
             var map = Box("map", p, 40, 40, 400, 324);
             Framed(map, new Color(0.02f, 0.03f, 0.04f, 1f));
             Txt(Box("lbl", map, 14, 290, 200, 30), "MAP", 20, new Color(0.6f, 0.6f, 0.55f), TextAnchor.MiddleLeft);
-            mapScale = Mathf.Min(360f / 16f, 260f / 14f);
+            mapScale = Mathf.Min(360f / 16f, 260f / 24f);
             float ox = 20 + (360f - 16f * mapScale) * 0.5f, oy = 18;
-            var mapArea = Box("area", map, ox, oy, 16f * mapScale, 14f * mapScale);
+            var mapArea = Box("area", map, ox, oy, 16f * mapScale, 24f * mapScale);
             foreach (var r in gm.house.rooms)
             {
                 var rr = Box(r.name, mapArea, r.rect.xMin * mapScale + 1, r.rect.yMin * mapScale + 1, r.rect.width * mapScale - 2, r.rect.height * mapScale - 2);
