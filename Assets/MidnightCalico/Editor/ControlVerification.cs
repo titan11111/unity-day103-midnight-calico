@@ -465,14 +465,31 @@ namespace MidnightCalico.EditorTools
             {
                 PlacePlayer(gm, new Vector3(6.4f, 0.02f, z), Quaternion.identity);
                 system.SendMessage("LateUpdate");
-                Require(system.current.room == "廊下" && gm.house.stairRenderers.All(r => !r.enabled), "Ground floor corridor at z=" + z + " hides staircase renderers");
-                Require(gm.house.stairRenderers.Where(r => r.GetComponent<Collider>() != null).All(r => r.GetComponent<Collider>().enabled), "Hidden staircase preserves physical colliders");
+                Require(system.current.room == "廊下" && gm.house.stairRenderers.All(r => r.enabled), "Ground floor corridor at z=" + z + " keeps rear staircase visible");
+                Require(gm.house.stairRenderers.Where(r => r.GetComponent<Collider>() != null).All(r => r.GetComponent<Collider>().enabled), "Visible staircase preserves physical colliders");
                 CaptureCamera(system.cam, "Builds/ControlVerification/corridor-" + z + ".png");
             }
             PlacePlayer(gm, new Vector3(HouseBuilder.StairCenterX, 1.5f, 18.8f), Quaternion.identity);
             system.SendMessage("LateUpdate");
             Require(system.current.room == "階段" && gm.house.stairRenderers.All(r => r.enabled), "Stair climbing camera restores steps and handrail");
             CaptureCamera(system.cam, "Builds/ControlVerification/stairs-visible.png");
+            // 入口のカメラが階段の方へ向き、2階中央廊下が落とし穴にならないことを実カプセルで検査。
+            PlacePlayer(gm, new Vector3(7f, 0.02f, 14.8f), Quaternion.identity);
+            system.SendMessage("LateUpdate");
+            Vector3 foot = new Vector3(HouseBuilder.StairCenterX,0.5f,HouseBuilder.StairStartZ+0.2f);
+            Vector3 viewport = system.cam.WorldToViewportPoint(foot);
+            Require(system.current.room == "階段ホール" && viewport.z > 0 && viewport.x > 0 && viewport.x < 1 && viewport.y > 0 && viewport.y < 1,
+                "Stair hall camera frames the visible first steps before climbing");
+            CaptureCamera(system.cam, "Builds/ControlVerification/stair-entrance.png");
+            PlacePlayer(gm, new Vector3(7f,3.02f,13.1f), Quaternion.identity);
+            var controller=gm.player.GetComponent<CharacterController>();
+            for(int n=0;n<100;n++) controller.Move(new Vector3(0,-0.05f,-0.05f));
+            Require(gm.player.transform.position.y>2.85f && gm.player.transform.position.z<8.3f,
+                "Entire upstairs central corridor has continuous walkable flooring");
+            system.SendMessage("LateUpdate");
+            Require(gm.house.RoomName(gm.player.transform.position)=="2階 廊下" && system.current.room=="2階 廊下",
+                "Upstairs corridor has its own floor-aware room and camera");
+            CaptureCamera(system.cam, "Builds/ControlVerification/upstairs-corridor.png");
             PlacePlayer(gm, position, rotation);
             system.SendMessage("LateUpdate");
         }

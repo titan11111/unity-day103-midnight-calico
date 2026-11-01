@@ -94,6 +94,7 @@ namespace MidnightCalico
             h.rooms.Insert(0,new Room("階段",8.4f,StairStartZ,9.95f,StairEndZ) { stairs=true });
             h.rooms.Add(new Room("2階 寝室",0f,7f,6f,14f) { floorY=3f });
             h.rooms.Add(new Room("2階 書斎",8f,7f,16f,14f) { floorY=3f });
+            h.rooms.Add(new Room("2階 廊下",6f,7f,8f,12.4f) { floorY=3f });
             h.rooms.Add(new Room("2階 踊り場",6f,12.4f,8f,14f) { floorY=3f });
             h.rooms.Add(new Room("階段ホール",6f,14f,10f,15.6f));
             h.rooms.Add(new Room("階段下通路",6f,15.6f,8.4f,23.8f));
@@ -108,9 +109,11 @@ namespace MidnightCalico
             Geo.BoxMM(root,"階段ホール南壁",8f,0f,14f,10.07f,5.5f,14.12f,woodWhite);
             Geo.BoxMM(root,"階段ホール天井",6f,5.5f,14f,10.07f,5.6f,23.92f,ceilingMat,false);
             // 渡り廊下の端から転落しないよう、通り幅を確保した腰壁を置く。
-            Geo.BoxMM(root,"渡り廊下の腰壁",8.2f,3f,15.7f,8.3f,3.9f,22.2f,woodLight);
+            Geo.BoxMM(root,"渡り廊下の腰壁",8.2f,3f,14f,8.3f,3.9f,22.2f,woodLight);
+            // 2階の吹抜け側は腰壁で閉じ、階段からの出入口だけ開ける。
+            Geo.BoxMM(root,"階段踊り場の転落防止壁",8.3f,3f,22.2f,8.4f,3.9f,22.3f,woodLight);
             AddLight(new Vector3(8.3f,5.15f,18.7f),new Color(1f,0.88f,0.7f),0.9f,9f);
-            var stairRoot = new GameObject("階段（視界に合わせて表示）").transform;
+            var stairRoot = new GameObject("階段（入口から常時表示）").transform;
             stairRoot.SetParent(root, false);
             for(int i=0;i<20;i++)
             {
@@ -128,7 +131,8 @@ namespace MidnightCalico
             h.stairRenderers = stairRoot.GetComponentsInChildren<Renderer>();
             Geo.BoxMM(root,"2階寝室の床",0f,2.8f,7f,6f,3f,14f,woodFloorDark);
             Geo.BoxMM(root,"2階書斎の床",8f,2.8f,7f,16f,3f,14f,woodFloorDark);
-            Geo.BoxMM(root,"2階踊り場の床",6f,2.8f,12.4f,8f,3f,14f,woodFloorDark);
+            Geo.BoxMM(root,"2階廊下の床",6f,2.8f,7f,8f,3f,14f,woodFloorDark);
+            Geo.BoxMM(root,"2階廊下南壁",6f,3f,7f,8f,5.5f,7.12f,woodWhite);
             Geo.BoxMM(root,"2階北壁西",0f,3f,13.92f,6.2f,5.5f,14f,woodWhite);
             Geo.BoxMM(root,"2階北壁東",7.8f,3f,13.92f,16f,5.5f,14f,woodWhite);
             Geo.BoxMM(root,"2階北出入口の上枠",6.2f,5.05f,13.92f,7.8f,5.5f,14f,woodWhite);
@@ -155,15 +159,17 @@ namespace MidnightCalico
             Geo.BoxMM(root,"新入り猫のベッド",13.4f,3f,12.3f,14.3f,3.06f,13.2f,beige,false);
             Geo.BoxMM(root,"猫の水皿",14.55f,3f,12.5f,14.8f,3.05f,12.75f,ceramic,false);
             PropBox("2階の写真立て",new Vector3(14.1f,3.92f,7.65f),new Vector3(0.18f,0.24f,0.035f),woodLight,0.2f,true);
+            AddLight(new Vector3(7f,5.1f,10.5f),new Color(1f,0.88f,0.7f),0.8f,6f);
             AddLight(new Vector3(3f,5.1f,11f),new Color(0.8f,0.85f,1f),0.7f,7f);
             AddLight(new Vector3(12f,5.1f,11f),new Color(1f,0.85f,0.65f),0.8f,7f);
             Search("2階の机",new Vector3(14.4f,3f,8.7f),ItemId.Bandage,1,"書斎の机に絆創膏がある。奥で新入り猫が小さく震えている。");
             Search("2階のベッド",new Vector3(3.5f,3f,11f),ItemId.None,0,"寝室のベッド。廊下の階段で1階へ戻れる。");
             h.zones.Insert(0,new CamZone("階段",8.4f,15.3f,9.95f,22.3f,new Vector3(9.15f,5.3f,14.8f),new Vector3(9.15f,1.8f,19.3f),0.45f,58f) { minY=-0.4f,maxY=3.4f,priority=10 });
-            h.zones.Add(new CamZone("階段ホール",6f,14f,10f,15.7f,new Vector3(9.6f,2.25f,14.4f),new Vector3(7.5f,1f,15.3f),0.4f) { priority=5 });
+            h.zones.Add(new CamZone("階段ホール",6f,14f,10f,15.7f,new Vector3(6.6f,2.25f,14.4f),new Vector3(9.15f,1.2f,17f),0.25f,70f) { priority=5 });
             h.zones.Add(new CamZone("階段下通路",6f,15.7f,8.4f,23.8f,new Vector3(7f,2.3f,15.9f),new Vector3(7f,1f,20f),0.4f) { priority=5 });
             h.zones.Add(new CamZone("2階 渡り廊下",6f,14f,8.4f,22.2f,new Vector3(6.5f,5.2f,22.8f),new Vector3(7.1f,3.7f,17.6f),0.35f) { minY=2.6f,maxY=5.7f,priority=20 });
             h.zones.Add(new CamZone("2階 階段踊り場",6f,22.2f,10f,23.8f,new Vector3(7f,5.2f,20.6f),new Vector3(8.4f,3.7f,22.9f),0.35f) { minY=2.6f,maxY=5.7f,priority=20 });
+            h.zones.Add(new CamZone("2階 廊下",6f,7f,8f,12.4f,new Vector3(7f,5.15f,7.5f),new Vector3(7f,3.7f,12.8f),0.25f,65f) { minY=2.6f,maxY=5.7f,priority=20 });
             h.zones.Add(new CamZone("2階 踊り場",6f,12.4f,8f,14f,new Vector3(7f,5.2f,10.5f),new Vector3(7f,3.7f,13.2f),0.25f) { minY=2.6f,maxY=5.7f,priority=20 });
             h.zones.Add(new CamZone("2階 寝室",0f,7f,6f,14f,new Vector3(5.45f,5.25f,13.45f),new Vector3(2.6f,3.6f,10.4f),0.25f) { minY=2.6f,maxY=5.7f,priority=20 });
             h.zones.Add(new CamZone("2階 書斎",8f,7f,16f,14f,new Vector3(8.5f,5.2f,13.45f),new Vector3(13.8f,3.45f,11.8f),0.3f) { minY=2.6f,maxY=5.7f,priority=20 });

@@ -69,12 +69,11 @@ namespace MidnightCalico
             cam.transform.rotation *= quakeRotation;
         }
 
-        // 1階を映す時だけ階段を透視する。Colliderは残すので通常どおり昇降できる。
-        // 階段専用カット・2階・演出カットでは表示を戻す。
+        // 階段は家の北側に独立しており、1階の視界を塞がない。入口から常に見せる。
         public void UpdateStairVisibility()
         {
             if (house == null || house.stairRenderers == null) return;
-            bool visible = overrideShot || current == null || current.room == "階段" || current.minY >= 2.6f;
+            const bool visible = true;
             foreach (var renderer in house.stairRenderers)
                 if (renderer != null) renderer.enabled = visible;
         }
