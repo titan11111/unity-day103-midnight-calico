@@ -1,3 +1,21 @@
+# 階段・2階修正：GitHub配信済み／本番照合未完了（2026-11-01、日本時間）
+
+- 変更ID：day103-3cefa345de3f。
+- 最新ソースは origin/main の 029dd5c016e686544e9fc4eab47357ae86c01c0c に保存済み（GitHub APIで4変更ファイルを照合）。ローカルGit HEADはd750c5eのため、未コミット差分を破棄しない。
+- 階段を1階カメラで非表示にしていた処理を解除。ホールのカメラを最初の踏板へ向け、入室時から階段を表示。
+- 2階中央廊下の欠けていた床（z7〜12.4）を補完。廊下の部屋判定・固定カメラ・照明・南端壁を追加。渡り廊下の腰壁を建物側まで延長。
+- Unity Editor実行検証：2026-11-01T08:46:49.0843500Z、172項目passed。入口から階段が画面内に見えること、実プレイヤーで2階廊下全長を落下せず歩くこと、階段の実昇降を含む。
+- Builds/ControlVerification/stair-entrance.png と upstairs-corridor.png を目視確認済み。
+- 最新WebGLビルドSucceeded。ログ：Builds/stair-visibility-upstairs-build.log。gzip解凍後wasm先頭0061736d確認済み。
+- Builds/WebGL/release.jsonへ変更ID・ソースコミット・ビルド日時・18ファイルのSHA-256とgit blob SHA・検証範囲を記録済み。
+- 既存 origin/gh-pages へ最新出力を反映済み：145f0be9ddc362c64e72fa82b84665c39666c12f。変更された4配信blobの返却SHAと、反映後treeの18全配信blobのSHAを手元の最新ビルドと照合済み。
+- GitHub Pagesワークフロー：41291048541、head 145f0be9ddc362c64e72fa82b84665c39666c12f、completed / success をGitHub APIで確認済み。本番HTTPファイル照合・画面確認は承認ゲート拒否のため未完了。
+- 本番ページを開く操作は、今回もブラウザ承認ゲートが拒否（user declined permission / origin approval gate did not grant access）。別ブラウザや間接アクセスで回避しない。公開画面の照合・試遊は未完了。
+- iPhone Safari・外付けパッド実機未確認。
+- 再開手順：本番URL https://titan11111.github.io/unity-day103-midnight-calico/ を開く許可を得たら、release.jsonのday103-3cefa345de3fと18ファイルを手元のSHA-256と照合し、開始→階段ホール→昇降→2階廊下・寝室・書斎を試遊する。ソースやビルドが変わっていなければ再ビルド不要。前回記録の旧変更IDを公開し直さない。
+
+以下は前回作業の記録。最新状態は上記を優先する。
+
 # 最新の引継ぎ：ゲーム公開のみ未完了（2026-11-01、日本時間）
 
 ## 完了済み
