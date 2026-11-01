@@ -21,7 +21,8 @@
     ],
     "productionBrowser": "blocked-by-browser-origin-approval-gate",
     "iPhoneSafari": "not-tested",
-    "physicalGamepad": "not-tested"
+    "physicalGamepad": "not-tested",
+    "mobileFitEmulation": "Chromium iPhone13エミュ 844x390 / 667x300 で4ボタン＋右上2ボタンが画面内、ロゴ非表示、エラー0（2026-11-01）"
   },
   "files": [
     {
@@ -128,9 +129,14 @@
     },
     {
       "path": "index.html",
-      "size": 7210,
-      "sha256": "353e928e947bfeac6f44ebb18c4def1424af921ae854b9ebbb9d86453b7d99b4",
-      "gitBlobSha": "e3743dcbfbab586ff24fef279dd1c4a0f23c66a4"
+      "size": 9377,
+      "sha256": "05effb282c107b46fd63b328e03a12b3d6f916115499126f3dce6f2ab6de1045",
+      "gitBlobSha": "d970ea48f525494f6e02e00ff07d80be9df7f657"
     }
-  ]
+  ],
+  "webPageRevision": {
+    "id": "mobile-fit-v2",
+    "changedAtUtc": "2026-11-01T11:30:00Z",
+    "note": "index.htmlのみ更新：スマホ横画面でUnityロゴ（読み込みロゴ・Made with Unity）を黒幕で隠し、画面をセーフエリア内に収めて操作ボタンの見切れを解消。ゲーム本体（Build/）は同一。"
+  }
 }
