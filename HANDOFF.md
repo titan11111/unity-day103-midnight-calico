@@ -56,3 +56,10 @@
 
 ## プロジェクト
 /Volumes/開発用SSD/開発データ/Unity/Projects/TitanUnity100/Days/day103/103-midnight-calico
+
+# スマホ横画面の表示修正（2026-11-01 20時台、日本時間）
+- 症状：スマホで横にするとUnityロゴ（読み込みロゴ＋「Made with Unity」）が出て邪魔／iOSで4つの操作ボタンが見切れる。
+- 原因：①テンプレートの読み込みロゴと起動スプラッシュが有効（m_ShowUnitySplashScreen: 1）。②キャンバスが100vh/100dvhでノッチ・ホームバー・Safariのツールバー領域まで広がり、WebGLではScreen.safeAreaが画面全体を返すためUnity側のSafeAreaが効かない。さらにテンプレートがモバイル時にviewportを上書きしてviewport-fit=coverを消していた。
+- 対応（gh-pages 5e9cf57・index.htmlのみ。Build/は day103-3cefa345de3f のまま）：読み込みロゴ非表示、起動後3.8秒はタイトル入りの黒幕でスプラッシュを隠す、visualViewportからsafe-area insetを引いた範囲にキャンバスを合わせ（タッチ端末は最低左右8px・上4px・下6pxの余白）、回転時に再計算。
+- 対応（main）：PatchIndexForIPhoneを上記と同じ内容に更新（再実行しても同結果、旧版の注入は置換）。ProjectSettingsとSetup()で起動スプラッシュを無効化。次のWebGLビルドから自動で反映される。
+- 検証：Chromium iPhone 13エミュ 844x390・667x300で、ロゴ非表示・4ボタン＋右上2ボタンが画面内・エラー0。Unityスプラッシュは起動完了後約1.2〜2.4秒表示され、黒幕で隠れることを確認。C#はこの環境でコンパイル未実施（次にUnityを開いたときConsoleを確認）。iPhone Safari実機は未確認。

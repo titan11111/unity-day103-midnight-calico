@@ -93,41 +93,87 @@ namespace MidnightCalico.EditorTools
         }
 
         /// <summary>
-        /// WebGL の index.html を iPhone の Safari 向けに調整する：
-        /// 全画面・ズーム禁止・長押しメニュー禁止・「モバイル非対応」バナーを消す・縦持ちなら「横にしてね」
+        /// WebGL の index.html をスマホ横画面向けに整える（GitHub Pages 公開用）：
+        /// ・Unityの読み込みロゴを消し、起動時の「Made with Unity」表示が終わるまで黒幕（タイトル）で隠す
+        /// ・キャンバスを visualViewport からノッチ/ホームバー（safe-area）を引いた範囲に収め、操作ボタンの見切れを防ぐ
+        /// ・ズーム禁止・長押しメニュー禁止・「モバイル非対応」バナーを消す・縦持ちなら「横にしてね」
+        /// 何度実行しても同じ結果になる（旧版の注入は置き換える）。
         /// </summary>
+        const string MobileHead = @"<meta name=""viewport"" content=""width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"">
+<meta name=""apple-mobile-web-app-capable"" content=""yes"">
+<meta name=""mobile-web-app-capable"" content=""yes"">
+<meta name=""apple-mobile-web-app-status-bar-style"" content=""black-translucent"">
+<style id=""midnight-calico-ios-v2"">
+html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;overscroll-behavior:none;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+#unity-container{position:fixed!important;left:0;top:0;width:100vw;height:100vh;transform:none!important;background:#000}
+#unity-canvas{display:block;width:100%!important;height:100%!important;background:#000}
+#unity-footer,#unity-warning,#unity-loading-bar,#unity-logo{display:none!important}
+#mc-safe-probe{position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+#mc-cover{position:fixed;inset:0;z-index:50;background:#000;color:#d8cfb8;display:flex;flex-direction:column;align-items:center;justify-content:center;font:24px serif;letter-spacing:.25em;transition:opacity .6s}
+#mc-cover small{margin-top:14px;font:14px sans-serif;letter-spacing:.1em;opacity:.7}
+#mc-cover.mc-hide{opacity:0;pointer-events:none}
+#mc-rotate{display:none;position:fixed;inset:0;z-index:99;background:#000;color:#d8cfb8;font:20px sans-serif;align-items:center;justify-content:center;text-align:center;line-height:1.8}
+@media (orientation:portrait) and (pointer:coarse){#mc-rotate{display:flex}}
+</style>
+";
+        const string MobileBody = @"<div id=""mc-rotate"">📱 スマホを横向きにしてね<br>深夜二時のミケ</div>
+<div id=""mc-cover"">深夜二時のミケ<small id=""mc-cover-text"">読み込み中…</small></div>
+<div id=""mc-safe-probe""></div>";
+        const string MobileTail = @"<script>
+(function(){
+  var touch=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/.test(navigator.userAgent));
+  function px(v){return parseFloat(v)||0;}
+  function fit(){
+    var c=document.getElementById('unity-container'),p=document.getElementById('mc-safe-probe');
+    if(!c||!p)return;
+    var vv=window.visualViewport,W=vv?vv.width:window.innerWidth,H=vv?vv.height:window.innerHeight;
+    var cs=getComputedStyle(p),t=px(cs.paddingTop),r=px(cs.paddingRight),b=px(cs.paddingBottom),l=px(cs.paddingLeft);
+    if(touch){l=Math.max(l,8);r=Math.max(r,8);t=Math.max(t,4);b=Math.max(b,6);}
+    var s=c.style;
+    s.setProperty('left',l+'px','important');s.setProperty('top',t+'px','important');
+    s.setProperty('width',Math.max(1,Math.floor(W-l-r))+'px','important');
+    s.setProperty('height',Math.max(1,Math.floor(H-t-b))+'px','important');
+    window.scrollTo(0,0);
+  }
+  window.mcFit=fit;
+  window.mcProgress=function(v){var e=document.getElementById('mc-cover-text');if(e)e.textContent='読み込み中… '+Math.round(v*100)+'%';};
+  // 起動直後のUnityロゴ表示が終わるまで黒幕で隠し、タイトル画面から見せる
+  window.mcReady=function(){fit();var e=document.getElementById('mc-cover-text');if(e)e.textContent='まもなく開始';setTimeout(function(){var c=document.getElementById('mc-cover');if(c)c.className='mc-hide';},3800);};
+  window.addEventListener('resize',fit);
+  window.addEventListener('orientationchange',function(){fit();setTimeout(fit,250);setTimeout(fit,800);});
+  if(window.visualViewport){visualViewport.addEventListener('resize',fit);visualViewport.addEventListener('scroll',fit);}
+  fit();
+})();
+document.addEventListener('gesturestart',function(e){e.preventDefault();});
+document.addEventListener('touchmove',function(e){e.preventDefault();},{passive:false});
+document.addEventListener('contextmenu',function(e){e.preventDefault();});
+</script>
+";
+
         public static void PatchIndexForIPhone(string indexPath)
         {
             if (!File.Exists(indexPath)) return;
-            string html = File.ReadAllText(indexPath);
-            if (html.Contains("midnight-calico-ios")) return;
-            const string head =
-                "<meta name=\"viewport\" content=\"width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover\">\n" +
-                "<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">\n" +
-                "<meta name=\"mobile-web-app-capable\" content=\"yes\">\n" +
-                "<meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\">\n" +
-                "<style id=\"midnight-calico-ios\">\n" +
-                "html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;overscroll-behavior:none;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}\n" +
-                "#unity-container{position:fixed!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;transform:none!important}\n" +
-                "#unity-canvas{width:100vw!important;height:100vh!important;height:100dvh!important;background:#000}\n" +
-                "#unity-footer,#unity-warning{display:none!important}\n" +
-                "#mc-rotate{display:none;position:fixed;inset:0;z-index:99;background:#000;color:#d8cfb8;font:20px sans-serif;align-items:center;justify-content:center;text-align:center;line-height:1.8}\n" +
-                "@media (orientation:portrait){#mc-rotate{display:flex}}\n" +
-                "</style>\n";
-            html = Regex.Replace(html, "<meta name=\"viewport\"[^>]*>", "");
-            html = Regex.Replace(html, "</head>", head + "</head>", RegexOptions.IgnoreCase);
-            html = Regex.Replace(html, "<body([^>]*)>", "<body$1>\n<div id=\"mc-rotate\">📱 iPhoneを横向きにしてね<br>深夜二時のミケ</div>", RegexOptions.IgnoreCase);
-            // 「WebGL はモバイル非対応」バナーを出さない
-            html = Regex.Replace(html, "unityShowBanner\\('WebGL builds are not supported on mobile devices\\.'\\);", "");
-            // Retina でぼやけすぎないように（重くならない範囲で 2 倍まで）
+            string html = File.ReadAllText(indexPath).Replace("\r\n", "\n");
+            // 旧版の注入を除去
+            html = Regex.Replace(html, "<meta name=\"(apple-mobile-web-app-capable|mobile-web-app-capable|apple-mobile-web-app-status-bar-style)\"[^>]*>\n?", "");
+            html = Regex.Replace(html, "<style id=\"midnight-calico-ios[^\"]*\">[\\s\\S]*?</style>\n?", "");
+            html = Regex.Replace(html, "<div id=\"mc-rotate\">[\\s\\S]*?</div>\n?", "");
+            html = Regex.Replace(html, "<div id=\"mc-cover\">[\\s\\S]*?</div>\n?", "");
+            html = Regex.Replace(html, "<div id=\"mc-safe-probe\"></div>\n?", "");
+            html = Regex.Replace(html, "<script>\n(\\(function\\(\\)\\{\n  var touch[\\s\\S]*?\\}\\)\\(\\);\n)?document\\.addEventListener\\('gesturestart'[\\s\\S]*?</script>\n?", "");
+            // 新しい注入
+            html = Regex.Replace(html, "\\s*<meta name=\"viewport\"[^>]*>", "");
+            html = new Regex("</head>", RegexOptions.IgnoreCase).Replace(html, MobileHead + "</head>", 1);
+            html = new Regex("<body([^>]*)>", RegexOptions.IgnoreCase).Replace(html, m => "<body" + m.Groups[1].Value + ">\n" + MobileBody, 1);
+            // テンプレートがモバイル時に viewport を上書きする処理を除去（viewport-fit=cover が消えるため）
+            html = Regex.Replace(html, "var meta = document\\.createElement\\('meta'\\);[\\s\\S]*?appendChild\\(meta\\);", "");
+            html = html.Replace("unityShowBanner('WebGL builds are not supported on mobile devices.');", "");
             html = html.Replace("config.devicePixelRatio = 1;", "config.devicePixelRatio = Math.min(window.devicePixelRatio || 1, 2);");
-            const string tail =
-                "<script>\n" +
-                "document.addEventListener('gesturestart',function(e){e.preventDefault();});\n" +
-                "document.addEventListener('touchmove',function(e){e.preventDefault();},{passive:false});\n" +
-                "document.addEventListener('contextmenu',function(e){e.preventDefault();});\n" +
-                "</script>\n";
-            html = Regex.Replace(html, "</body>", tail + "</body>", RegexOptions.IgnoreCase);
+            const string pb = "document.querySelector(\"#unity-progress-bar-full\").style.width = 100 * progress + \"%\";";
+            if (html.Contains(pb) && !html.Contains("mcProgress(progress)")) html = html.Replace(pb, pb + " if (window.mcProgress) mcProgress(progress);");
+            const string lb = "document.querySelector(\"#unity-loading-bar\").style.display = \"none\";";
+            if (html.Contains(lb) && !html.Contains("mcReady()")) html = html.Replace(lb, lb + " if (window.mcReady) mcReady();");
+            html = new Regex("</body>", RegexOptions.IgnoreCase).Replace(html, MobileTail + "</body>", 1);
             File.WriteAllText(indexPath, html);
         }
 
@@ -181,6 +227,8 @@ namespace MidnightCalico.EditorTools
             PlayerSettings.allowedAutorotateToLandscapeLeft = true;
             PlayerSettings.allowedAutorotateToLandscapeRight = true;
             PlayerSettings.statusBarHidden = true;
+            // スマホで横にした時などに出る「Made with Unity」を出さない（Unity 6 は Personal でも無効化可）
+            PlayerSettings.SplashScreen.show = false;
 #if UNITY_2021_2_OR_NEWER
             if (PlayerSettings.GetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.iOS).StartsWith("com.DefaultCompany"))
                 PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.iOS, "com.titan.midnightcalico");
