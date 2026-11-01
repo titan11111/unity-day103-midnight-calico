@@ -1,117 +1,136 @@
 {
-  "buildId": "day103-28c639258dea",
-  "sourceCommit": "2ec0fa805fbee0e1a03a856b0d54799712b4eecc",
-  "createdAtUtc": "2026-11-01T00:41:23.094422+00:00",
+  "buildId": "day103-3cefa345de3f",
+  "sourceCommit": "029dd5c016e686544e9fc4eab47357ae86c01c0c",
+  "createdAtUtc": "2026-11-01T08:57:40.131830+00:00",
   "features": [
-    "staircase-ground-floor-cutaway",
-    "playful-male-kitten",
-    "second-floor",
-    "timid-newcomer-cat",
-    "facial-expressions",
-    "earthquake-20s",
-    "falling-props",
-    "table-shelter",
-    "gzip-fallback"
+    "visible-stairs-from-ground-floor",
+    "stair-entrance-camera",
+    "continuous-upstairs-hallway-floor",
+    "upstairs-corridor-camera-and-light",
+    "extended-upper-guardrail",
+    "household-cats"
   ],
+  "verification": {
+    "unityEditorChecks": 172,
+    "unityEditorResult": "passed",
+    "unityEditorCheckedAtUtc": "2026-11-01T08:46:49.0843500Z",
+    "webGLBuild": "Succeeded",
+    "screenshots": [
+      "stair-entrance.png",
+      "upstairs-corridor.png"
+    ],
+    "productionBrowser": "blocked-by-browser-origin-approval-gate",
+    "iPhoneSafari": "not-tested",
+    "physicalGamepad": "not-tested"
+  },
   "files": [
     {
       "path": ".nojekyll",
       "size": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gitBlobSha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
     },
     {
       "path": "Build/WebGL.data.unityweb",
-      "size": 3345677,
-      "sha256": "3fa31674e9ff89469af46c6fad588b35ddfbafc1f848c26d82ca43e4d842ceae"
+      "size": 3348609,
+      "sha256": "18bbdaddca700f4f8a1a1fa4770d5a1ffbed538da952f5e5683fc02dcc673d0d",
+      "gitBlobSha": "162806a5b0e3add58ef9f5fb800d71b488848778"
     },
     {
       "path": "Build/WebGL.framework.js.unityweb",
-      "size": 88765,
-      "sha256": "6fba6967669c013bcba0b84072d3bb119257350f7add8c6f8c02dd0b28b85a29"
+      "size": 88795,
+      "sha256": "d00a080245d7e32f8705143c149b7120531274e95ac394a88f23a31153a2a704",
+      "gitBlobSha": "246ef3f7e36e9fad117870a0276f93dde68c8c27"
     },
     {
       "path": "Build/WebGL.loader.js",
       "size": 47867,
-      "sha256": "3755268a346c92f187f1fa64a03c9e431772fe2e5f49b893353eda8b0b44f59e"
+      "sha256": "e1286a6f74c5ad1d83e9b4bc8b63915d48363a3f0536f03e97f47ae38de11c20",
+      "gitBlobSha": "003ee30bbaf23b8bef9f8d55672611ae800ac22f"
     },
     {
       "path": "Build/WebGL.wasm.unityweb",
-      "size": 8981698,
-      "sha256": "b4effe81f0462c9813a0ef912fb1322228d05103a69f51b1218fabc4e8dc6c28"
+      "size": 9021957,
+      "sha256": "0abb7bc32dd5c42811b40b64225e440f65e0174e2fc3c231dba9bc8e97c06da2",
+      "gitBlobSha": "af2d597a72416f1535078336a44e78117cba3569"
     },
     {
       "path": "TemplateData/MemoryProfiler.png",
       "size": 665,
-      "sha256": "0ce87be20d0c24ab6cb73b57de2004da261cc2a641e69319c6ae3fe11fc85483"
+      "sha256": "0ce87be20d0c24ab6cb73b57de2004da261cc2a641e69319c6ae3fe11fc85483",
+      "gitBlobSha": "2e264c7be1ed0f2bcc336aaf38c409ec61ccf4a9"
     },
     {
       "path": "TemplateData/favicon.ico",
       "size": 2305,
-      "sha256": "9c13beb90ee8f70580d52a21d5233970d1c89e71e4a34a462c22610941c3c77f"
+      "sha256": "9c13beb90ee8f70580d52a21d5233970d1c89e71e4a34a462c22610941c3c77f",
+      "gitBlobSha": "07db393850608b8752b24045c47c03b19bb35610"
     },
     {
       "path": "TemplateData/fullscreen-button.png",
       "size": 175,
-      "sha256": "21221581673a54b8139d408d4a3f8d2b879e86827d4b6fc53b995ff7a99ee3e9"
+      "sha256": "21221581673a54b8139d408d4a3f8d2b879e86827d4b6fc53b995ff7a99ee3e9",
+      "gitBlobSha": "e7b6496fc9c99bf761524e2b962b6de8bfca90d7"
     },
     {
       "path": "TemplateData/progress-bar-empty-dark.png",
       "size": 96,
-      "sha256": "bbee7131afe8a3365906240d89184dc86234c119467f390bc4bc6802328fdb4d"
+      "sha256": "bbee7131afe8a3365906240d89184dc86234c119467f390bc4bc6802328fdb4d",
+      "gitBlobSha": "d01612f729991d6b606e9148c70014b2d5aa5a00"
     },
     {
       "path": "TemplateData/progress-bar-empty-light.png",
       "size": 109,
-      "sha256": "143696c060ad43d6c30f19ff5f49000927a139a2a1e4c9f45fafaa2b90d7d2be"
+      "sha256": "143696c060ad43d6c30f19ff5f49000927a139a2a1e4c9f45fafaa2b90d7d2be",
+      "gitBlobSha": "593a32907e093f9d802865cfbb1ea46a2946bc56"
     },
     {
       "path": "TemplateData/progress-bar-full-dark.png",
       "size": 74,
-      "sha256": "3306a6244dcb3926fca38a28e3ced589df8ff1beed955eb17c0bbf01c918bc62"
+      "sha256": "3306a6244dcb3926fca38a28e3ced589df8ff1beed955eb17c0bbf01c918bc62",
+      "gitBlobSha": "c432c8666d955307ec7c690ef3624e50093513fe"
     },
     {
       "path": "TemplateData/progress-bar-full-light.png",
       "size": 84,
-      "sha256": "12395ea785480c5cdf12fade6e6cbf49666d5bb1cef7240c113dbcba6bdc5c87"
+      "sha256": "12395ea785480c5cdf12fade6e6cbf49666d5bb1cef7240c113dbcba6bdc5c87",
+      "gitBlobSha": "e683131ab7c4fb84dd3c70b8b0869adf11da0536"
     },
     {
       "path": "TemplateData/style.css",
       "size": 1448,
-      "sha256": "8e3625e108a61dcd1d31303376d9e02d7bdc08921d254e8f4359b892b3825caa"
+      "sha256": "8e3625e108a61dcd1d31303376d9e02d7bdc08921d254e8f4359b892b3825caa",
+      "gitBlobSha": "7c647ece63ce8dfb7d2a361e777dcecc96f61671"
     },
     {
       "path": "TemplateData/unity-logo-dark.png",
       "size": 3042,
-      "sha256": "c1b72d26c096487dabc948b54bc203f8dac7ed4e3f5733918798e858acb4b159"
+      "sha256": "c1b72d26c096487dabc948b54bc203f8dac7ed4e3f5733918798e858acb4b159",
+      "gitBlobSha": "2c3323841b378f8f84e7bf977e1292a982fe563b"
     },
     {
       "path": "TemplateData/unity-logo-light.png",
       "size": 3077,
-      "sha256": "002990aea0d946833cadc1519d5b7e50a4570bd537a0517dd79a59d3eec84da7"
+      "sha256": "002990aea0d946833cadc1519d5b7e50a4570bd537a0517dd79a59d3eec84da7",
+      "gitBlobSha": "9f0ab84b9d5f75c2c2de21c18d382c8d7adff393"
     },
     {
       "path": "TemplateData/unity-logo-title-footer.png",
       "size": 1151,
-      "sha256": "9e8b3bdb67c2446d16362fe59449d892100931dbbadfe6a9d923a4142b57a79f"
+      "sha256": "9e8b3bdb67c2446d16362fe59449d892100931dbbadfe6a9d923a4142b57a79f",
+      "gitBlobSha": "168196c80fed1e7e26cbf47d4a58060327df04e1"
     },
     {
       "path": "TemplateData/webmemd-icon.png",
       "size": 1670,
-      "sha256": "c56f5494640cedda273aad38d58e6ab9da625d5b3f4d875c0ff92c6192a569c2"
+      "sha256": "c56f5494640cedda273aad38d58e6ab9da625d5b3f4d875c0ff92c6192a569c2",
+      "gitBlobSha": "ba3aae983f1cd4be91b29d1e42e3daa7b5029f03"
     },
     {
       "path": "index.html",
       "size": 7210,
-      "sha256": "353e928e947bfeac6f44ebb18c4def1424af921ae854b9ebbb9d86453b7d99b4"
+      "sha256": "353e928e947bfeac6f44ebb18c4def1424af921ae854b9ebbb9d86453b7d99b4",
+      "gitBlobSha": "e3743dcbfbab586ff24fef279dd1c4a0f23c66a4"
     }
-  ],
-  "verification": {
-    "unityEditorChecks": 134,
-    "unityEditorResult": "passed",
-    "unityEditorCheckedAtUtc": "2026-11-01T00:37:30.5999360Z",
-    "webGLBuild": "Succeeded",
-    "visualCheck": "two ground-floor corridor views and stair view inspected",
-    "switchHardware": "not-tested",
-    "iphoneSafariHardware": "not-tested"
-  }
+  ]
 }
