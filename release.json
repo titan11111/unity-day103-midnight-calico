@@ -1,12 +1,13 @@
 {
-  "buildId": "day103-ae2b783df5ff",
-  "sourceCommit": "08189e948cde05c07d5799aec7a847e0832e62ca",
-  "createdAtUtc": "2026-10-31T11:17:26.555677+00:00",
+  "buildId": "day103-28c639258dea",
+  "sourceCommit": "2ec0fa805fbee0e1a03a856b0d54799712b4eecc",
+  "createdAtUtc": "2026-11-01T00:41:23.094422+00:00",
   "features": [
+    "staircase-ground-floor-cutaway",
+    "playful-male-kitten",
     "second-floor",
     "timid-newcomer-cat",
     "facial-expressions",
-    "switch-a-b-y",
     "earthquake-20s",
     "falling-props",
     "table-shelter",
@@ -20,13 +21,13 @@
     },
     {
       "path": "Build/WebGL.data.unityweb",
-      "size": 3345258,
-      "sha256": "59403c26e99d716a8b454c5f76a61a315b3fcfd687d20d20554408a1ce797147"
+      "size": 3345677,
+      "sha256": "3fa31674e9ff89469af46c6fad588b35ddfbafc1f848c26d82ca43e4d842ceae"
     },
     {
       "path": "Build/WebGL.framework.js.unityweb",
       "size": 88765,
-      "sha256": "675b592930378ebc53ac155ab14136e4461cbe70061319b408ba89b0930f4d14"
+      "sha256": "6fba6967669c013bcba0b84072d3bb119257350f7add8c6f8c02dd0b28b85a29"
     },
     {
       "path": "Build/WebGL.loader.js",
@@ -35,8 +36,8 @@
     },
     {
       "path": "Build/WebGL.wasm.unityweb",
-      "size": 8978017,
-      "sha256": "fa65f8e6ff33038287ca3faaf88cf7fffc2aad0416a670260f4687fbb4a0be5d"
+      "size": 8981698,
+      "sha256": "b4effe81f0462c9813a0ef912fb1322228d05103a69f51b1218fabc4e8dc6c28"
     },
     {
       "path": "TemplateData/MemoryProfiler.png",
@@ -105,11 +106,11 @@
     }
   ],
   "verification": {
-    "unityEditorChecks": 126,
+    "unityEditorChecks": 134,
     "unityEditorResult": "passed",
-    "unityEditorCheckedAtUtc": "2026-10-31T10:50:29.2896340Z",
+    "unityEditorCheckedAtUtc": "2026-11-01T00:37:30.5999360Z",
     "webGLBuild": "Succeeded",
-    "compression": "gzip-with-Unity-decompression-fallback",
+    "visualCheck": "two ground-floor corridor views and stair view inspected",
     "switchHardware": "not-tested",
     "iphoneSafariHardware": "not-tested"
   }
